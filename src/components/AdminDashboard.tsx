@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { api } from '../services/api';
 import { playCyberClick, playCyberBlip, playSuccessSound, playAlertSound } from '../utils/audio';
+import { extractErrorMessage } from '../utils/errorUtils';
 
 interface AdminDashboardProps {
   adminSession: AdminSession;
@@ -153,9 +154,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setNewUserPass('');
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to create user', err.message, 'error');
+      onShowToast('Failed to create user', extractErrorMessage(err, 'Failed to create user'), 'error');
     }
   };
 
@@ -173,9 +174,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setEditUser(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to update user', err.message, 'error');
+      onShowToast('Failed to update user', extractErrorMessage(err, 'Failed to update user'), 'error');
     }
   };
 
@@ -188,9 +189,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setConfirmDeleteUser(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to delete user', err.message, 'error');
+      onShowToast('Failed to delete user', extractErrorMessage(err, 'Failed to delete user'), 'error');
     }
   };
 
@@ -207,9 +208,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setResetPassUser(null);
       setResetPassValue('');
       fetchAllData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to reset pass key', err.message, 'error');
+      onShowToast('Failed to reset pass key', extractErrorMessage(err, 'Failed to reset pass key'), 'error');
     }
   };
 
@@ -221,9 +222,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onShowToast('Status Updated', `${user.username} is now ${nextStatus}`, 'info');
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to update status', err.message, 'error');
+      onShowToast('Failed to update status', extractErrorMessage(err, 'Failed to update status'), 'error');
     }
   };
 
@@ -243,9 +244,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setShowCreateModuleModal(false);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to create module', err.message, 'error');
+      onShowToast('Failed to create module', extractErrorMessage(err, 'Failed to create module'), 'error');
     }
   };
 
@@ -259,9 +260,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setEditModule(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to update module', err.message, 'error');
+      onShowToast('Failed to update module', extractErrorMessage(err, 'Failed to update module'), 'error');
     }
   };
 
@@ -274,9 +275,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setConfirmDeleteModule(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to delete module', err.message, 'error');
+      onShowToast('Failed to delete module', extractErrorMessage(err, 'Failed to delete module'), 'error');
     }
   };
 
@@ -291,9 +292,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onShowToast('Module Authorization Changed', `${mod.name} is now ${nextAuth ? 'AUTHORIZED' : 'LOCKED'}`, 'info');
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Error updating module auth', err.message, 'error');
+      onShowToast('Error updating module auth', extractErrorMessage(err, 'Error updating module auth'), 'error');
     }
   };
 
@@ -310,9 +311,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setEditPlan(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to update plan', err.message, 'error');
+      onShowToast('Failed to update plan', extractErrorMessage(err, 'Failed to update plan'), 'error');
     }
   };
 
@@ -329,9 +330,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setShowCreatePlanModal(false);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to create plan', err.message, 'error');
+      onShowToast('Failed to create plan', extractErrorMessage(err, 'Failed to create plan'), 'error');
     }
   };
 
@@ -347,9 +348,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setConfirmRevokeOrder(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to revoke order', err.message, 'error');
+      onShowToast('Failed to revoke order', extractErrorMessage(err, 'Failed to revoke order'), 'error');
     }
   };
 
@@ -363,9 +364,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setExtendOrder(null);
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to extend order', err.message, 'error');
+      onShowToast('Failed to extend order', extractErrorMessage(err, 'Failed to extend order'), 'error');
     }
   };
 
@@ -376,9 +377,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onShowToast('Order Updated', `Order ${order.id} status modified`, 'info');
       fetchAllData();
       if (onRefreshData) onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to update order', err.message, 'error');
+      onShowToast('Failed to update order', extractErrorMessage(err, 'Failed to update order'), 'error');
     }
   };
 
@@ -393,9 +394,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       playSuccessSound();
       onShowToast('Settings Saved', 'Payment gateway configuration updated successfully', 'success');
       fetchAllData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Failed to update payment settings', err.message, 'error');
+      onShowToast('Failed to update payment settings', extractErrorMessage(err, 'Failed to update payment settings'), 'error');
     }
   };
 

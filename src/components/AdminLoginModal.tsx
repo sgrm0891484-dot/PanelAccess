@@ -3,6 +3,7 @@ import { Shield, Lock, Key, X, AlertTriangle, ArrowRight, ShieldCheck, CheckCirc
 import { AdminSession } from '../types';
 import { api } from '../services/api';
 import { playCyberClick, playSuccessSound, playAlertSound } from '../utils/audio';
+import { extractErrorMessage } from '../utils/errorUtils';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -40,16 +41,19 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     try {
       const res = await api.loginAdmin(adminId.trim(), passKey.trim());
-      if (res.adminSession) {
+      if (res && res.adminSession) {
         playSuccessSound();
         if (onLoginSuccess) onLoginSuccess(res.adminSession);
         else if (onSuccess) onSuccess(res.adminSession);
         if (onShowToast) onShowToast('Admin Authenticated', `Welcome, ${res.adminSession.adminId}`, 'success');
         onClose();
+      } else {
+        throw new Error('INVALID ADMIN CREDENTIALS');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      setErrorMessage(err.message || 'INVALID ADMIN CREDENTIALS');
+      const safeMsg = extractErrorMessage(err, 'INVALID ADMIN CREDENTIALS');
+      setErrorMessage(safeMsg);
     } finally {
       setIsLoading(false);
     }

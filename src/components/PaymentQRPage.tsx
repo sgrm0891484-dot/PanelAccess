@@ -7,6 +7,7 @@ import confetti from 'canvas-confetti';
 import { PaymentSession, OrderRecord } from '../types';
 import { api } from '../services/api';
 import { playCyberBlip, playCyberClick, playSuccessSound, playAlertSound, playScanSound } from '../utils/audio';
+import { extractErrorMessage } from '../utils/errorUtils';
 
 interface PaymentQRPageProps {
   session: PaymentSession;
@@ -112,10 +113,10 @@ export const PaymentQRPage: React.FC<PaymentQRPageProps> = ({
       } else {
         throw new Error('Server payment verification failed');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setVerifyingStep(null);
       playAlertSound();
-      setErrorText(err.message || 'Payment settlement check timed out');
+      setErrorText(extractErrorMessage(err, 'Payment settlement check timed out'));
     }
   };
 

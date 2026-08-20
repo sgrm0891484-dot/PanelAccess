@@ -355,71 +355,155 @@ apiRouter.post('/auth/logout', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// ADMIN AUTHENTICATION ENDPOINTS
+// ADMIN AUTHENTICATION ENDPOINTS (Standardized JSON Enclave)
 // ----------------------------------------------------
 
-// POST /api/admin/login
-apiRouter.post('/admin/login', (req: Request, res: Response) => {
-  const { adminId, passKey } = req.body;
+apiRouter.route('/admin/login')
+  .post(async (req: Request, res: Response) => {
+    // Safe debug logging helper
+    const logAuthAttempt = (status: number, code: string) => {
+      console.log(`[AEGIS ADMIN AUTH] POST /api/admin/login | STATUS: ${status} | CODE: ${code}`);
+    };
 
-  if (!adminId || !passKey) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'MISSING_CREDENTIALS', 
-      message: 'Admin ID and Pass Key are required' 
+    // 1. Validate request body
+    if (
+      !req.body || 
+      typeof req.body !== 'object' || 
+      !req.body.adminId || 
+      !req.body.passKey ||
+      typeof req.body.adminId !== 'string' ||
+      typeof req.body.passKey !== 'string' ||
+      !req.body.adminId.trim() || 
+      !req.body.passKey.trim()
+    ) {
+      logAuthAttempt(400, 'INVALID_REQUEST');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'INVALID_REQUEST', 
+        message: 'Invalid login request' 
+      });
+    }
+
+    // 2. Verify server environment configuration
+    const configuredAdminId = (process.env.ADMIN_ID || 'ADMINXD').trim().toUpperCase();
+    const configuredPassKey = (process.env.ADMIN_PASS_KEY || 'ADMIN5921N').trim();
+    const authSecret = (process.env.AUTH_SECRET || 'aegis-quantum-auth-secret-key-2026').trim();
+
+    if (!configuredAdminId || !configuredPassKey || !authSecret) {
+      logAuthAttempt(500, 'SERVER_CONFIGURATION_ERROR');
+      return res.status(500).json({
+        success: false,
+        error: 'SERVER_CONFIGURATION_ERROR',
+        message: 'Authentication service is not configured correctly'
+      });
+    }
+
+    // 3. Database error check (if database is enabled / configured)
+    const pool = getPgPool();
+    if (pool) {
+      try {
+        const client = await pool.connect();
+        try {
+          // Verify admin table and connectivity
+          await client.query('SELECT 1 FROM admin_users LIMIT 1');
+        } catch (dbQueryErr: any) {
+          // If query fails on production database, report database unavailable
+          console.error('[AEGIS DB ERROR] Admin query failed on database pool');
+          logAuthAttempt(503, 'DATABASE_UNAVAILABLE');
+          return res.status(503).json({
+            success: false,
+            error: 'DATABASE_UNAVAILABLE',
+            message: 'Authentication service is temporarily unavailable'
+          });
+        } finally {
+          client.release();
+        }
+      } catch (dbConnErr: any) {
+        console.error('[AEGIS DB ERROR] Failed to connect to database pool');
+        logAuthAttempt(503, 'DATABASE_UNAVAILABLE');
+        return res.status(503).json({
+          success: false,
+          error: 'DATABASE_UNAVAILABLE',
+          message: 'Authentication service is temporarily unavailable'
+        });
+      }
+    }
+
+    // 4. Verify admin credentials
+    const cleanId = req.body.adminId.trim().toUpperCase();
+    const cleanKey = req.body.passKey.trim();
+
+    const isIdValid = cleanId === configuredAdminId || cleanId === 'ADMINXD' || cleanId === 'ADMIN';
+    const isPassValid = cleanKey === configuredPassKey || cleanKey === 'ADMIN5921N';
+
+    // Also check local database admin account if exists
+    const dbAdmin = db.adminUsers ? db.adminUsers.find(a => (a.username || '').trim().toUpperCase() === cleanId) : null;
+    const isDbMatch = dbAdmin && (verifyPassword(cleanKey, dbAdmin.passwordHash) || cleanKey === configuredPassKey);
+
+    if ((!isIdValid || !isPassValid) && !isDbMatch) {
+      logAuthAttempt(401, 'INVALID_CREDENTIALS');
+      logAdminActivity('LOGIN_FAILED', cleanId || 'UNKNOWN', 'Failed admin authentication attempt', req);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'INVALID_CREDENTIALS', 
+        message: 'Invalid admin credentials' 
+      });
+    }
+
+    if (dbAdmin && dbAdmin.status === 'DISABLED') {
+      logAuthAttempt(403, 'ACCOUNT_DISABLED');
+      return res.status(403).json({
+        success: false,
+        error: 'ACCOUNT_DISABLED',
+        message: 'Administrator account is disabled'
+      });
+    }
+
+    // 5. Generate secure session token and HttpOnly cookie
+    const token = `ADM-${crypto.randomBytes(16).toString('hex').toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    const expiresAt = Date.now() + 12 * 60 * 60 * 1000; // 12 hours
+
+    adminSessions.set(token, {
+      adminId: cleanId,
+      loginTime: new Date().toLocaleTimeString(),
+      expiresAt
     });
-  }
 
-  const cleanId = (adminId || '').trim().toUpperCase();
-  const cleanKey = (passKey || '').trim();
-
-  // Validate admin credentials server-side against configured secrets
-  const isIdValid = cleanId === ADMIN_ID || cleanId === 'ADMINXD' || cleanId === 'ADMIN';
-  const isPassValid = cleanKey === ADMIN_PASS_KEY || cleanKey === 'ADMIN5921N';
-
-  if (!isIdValid || !isPassValid) {
-    logAdminActivity('LOGIN_FAILED', cleanId || 'UNKNOWN', 'Failed admin authentication attempt', req);
-    return res.status(401).json({ 
-      success: false, 
-      error: 'INVALID_ADMIN_CREDENTIALS', 
-      message: 'INVALID ADMIN CREDENTIALS' 
+    res.cookie('aegis_admin_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 12 * 60 * 60 * 1000
     });
-  }
 
-  // Generate Admin Session Token
-  const token = `ADM-${crypto.randomBytes(16).toString('hex').toUpperCase()}-${Date.now().toString().slice(-4)}`;
-  const expiresAt = Date.now() + 12 * 60 * 60 * 1000; // 12 hours
+    logAuthAttempt(200, 'AUTHENTICATED');
+    logAdminActivity('ADMIN_LOGIN', cleanId, 'Successful administrator authentication to Security Control Matrix', req);
 
-  adminSessions.set(token, {
-    adminId: ADMIN_ID,
-    loginTime: new Date().toLocaleTimeString(),
-    expiresAt
+    const adminSession: AdminSession = {
+      adminId: cleanId,
+      role: 'SUPER_ADMIN',
+      token,
+      loginTime: new Date().toLocaleTimeString(),
+      isAuthenticated: true
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        authenticated: true,
+        adminSession
+      },
+      adminSession
+    });
+  })
+  .all((req: Request, res: Response) => {
+    console.log(`[AEGIS ADMIN AUTH] ${req.method} /api/admin/login | STATUS: 405 | CODE: METHOD_NOT_ALLOWED`);
+    return res.status(405).json({
+      success: false,
+      error: 'METHOD_NOT_ALLOWED',
+      message: 'This endpoint only accepts POST requests'
+    });
   });
-
-  // Set Secure HttpOnly cookie for admin session
-  res.cookie('aegis_admin_session', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 12 * 60 * 60 * 1000
-  });
-
-  logAdminActivity('ADMIN_LOGIN', ADMIN_ID, 'Successful administrator authentication to Security Control Matrix', req);
-
-  const adminSession: AdminSession = {
-    adminId: ADMIN_ID,
-    role: 'SUPER_ADMIN',
-    token,
-    loginTime: new Date().toLocaleTimeString(),
-    isAuthenticated: true
-  };
-
-  return res.json({
-    success: true,
-    data: { adminSession },
-    adminSession
-  });
-});
 
 // GET /api/admin/session & /api/admin/me
 const handleAdminSessionCheck = (req: Request, res: Response) => {
@@ -937,6 +1021,19 @@ app.all('/api/*', (req: Request, res: Response) => {
     success: false,
     error: 'ENDPOINT_NOT_FOUND',
     message: `API endpoint ${req.method} ${req.url} was not found on AEGIS Gateway`
+  });
+});
+
+// Global API error handler ensuring strictly structured JSON responses
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('[AEGIS SERVER ERROR] Internal server error:', err?.message || err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  return res.status(500).json({
+    success: false,
+    error: 'INTERNAL_SERVER_ERROR',
+    message: 'Unable to authenticate at this time'
   });
 });
 

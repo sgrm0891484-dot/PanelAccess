@@ -3,6 +3,7 @@ import {
   RuntimePlan, OrderRecord, PaymentSettings, AdminActivityLog, 
   AdminStats, LogEntry 
 } from '../types';
+import { extractErrorMessage } from '../utils/errorUtils';
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -18,7 +19,8 @@ export class ApiError extends Error {
   data?: any;
 
   constructor(message: string, status: number = 500, errorCode: string = 'API_ERROR', data?: any) {
-    super(message);
+    const safeMessage = extractErrorMessage(message, 'Unable to authenticate at this time');
+    super(safeMessage);
     this.name = 'ApiError';
     this.status = status;
     this.errorCode = errorCode;
@@ -69,11 +71,11 @@ async function apiRequest<T>(
     let errorCode = responseData?.error || 'HTTP_ERROR';
 
     if (response.status === 400) {
-      defaultMsg = 'Invalid request parameters provided.';
-      errorCode = 'BAD_REQUEST';
+      defaultMsg = 'Invalid login request';
+      errorCode = 'INVALID_REQUEST';
     } else if (response.status === 401) {
-      defaultMsg = 'Authentication required or session expired.';
-      errorCode = 'UNAUTHORIZED';
+      defaultMsg = 'Invalid admin credentials';
+      errorCode = 'INVALID_CREDENTIALS';
     } else if (response.status === 403) {
       defaultMsg = 'Access forbidden. Node account disabled or insufficient clearance.';
       errorCode = 'FORBIDDEN';
@@ -81,7 +83,7 @@ async function apiRequest<T>(
       defaultMsg = 'The requested resource or endpoint was not found.';
       errorCode = 'NOT_FOUND';
     } else if (response.status === 405) {
-      defaultMsg = `HTTP ${options.method || 'GET'} method is not allowed on ${endpoint}.`;
+      defaultMsg = 'This endpoint only accepts POST requests';
       errorCode = 'METHOD_NOT_ALLOWED';
     } else if (response.status === 409) {
       defaultMsg = 'Resource conflict detected in defense registry.';
@@ -92,13 +94,24 @@ async function apiRequest<T>(
     } else if (response.status === 429) {
       defaultMsg = 'Rate limit exceeded. Please back off before retrying.';
       errorCode = 'RATE_LIMITED';
-    } else if (response.status >= 500) {
-      defaultMsg = 'Internal Gateway Error. The security enclave reported a fault.';
+    } else if (response.status === 500) {
+      defaultMsg = 'Authentication service is not configured correctly';
+      errorCode = 'SERVER_CONFIGURATION_ERROR';
+    } else if (response.status === 503) {
+      defaultMsg = 'Authentication service is temporarily unavailable';
+      errorCode = 'DATABASE_UNAVAILABLE';
+    } else if (response.status > 500) {
+      defaultMsg = 'Unable to authenticate at this time';
       errorCode = 'SERVER_ERROR';
     }
 
-    const finalMessage = responseData?.message || responseData?.error || defaultMsg;
-    throw new ApiError(finalMessage, response.status, errorCode, responseData);
+    // Safely extract error message without string coercing objects
+    let finalMessage = defaultMsg;
+    if (responseData) {
+      finalMessage = extractErrorMessage(responseData, defaultMsg);
+    }
+
+    throw new ApiError(finalMessage, response.status, typeof errorCode === 'string' ? errorCode : 'HTTP_ERROR', responseData);
   }
 
   return (responseData !== null ? responseData : {}) as T;
@@ -150,8 +163,12 @@ export const api = {
   },
 
   // ADMIN AUTH
-  async loginAdmin(adminId: string, passKey: string): Promise<{ adminSession: AdminSession }> {
-    const res = await apiRequest<{ success: boolean; data?: { adminSession: AdminSession }; adminSession?: AdminSession }>(
+  async loginAdmin(adminId: string, passKey: string): Promise<{ success: boolean; adminSession: AdminSession }> {
+    const res = await apiRequest<{ 
+      success: boolean; 
+      data?: { authenticated?: boolean; adminSession?: AdminSession }; 
+      adminSession?: AdminSession 
+    }>(
       '/api/admin/login', 
       {
         method: 'POST',
@@ -159,11 +176,18 @@ export const api = {
       }
     );
 
-    const adminSession = res.data?.adminSession || res.adminSession;
-    if (!adminSession) {
-      throw new ApiError('INVALID ADMIN CREDENTIALS', 401);
+    const adminSession = res.data?.adminSession || res.adminSession || (res.success && res.data?.authenticated ? {
+      adminId: adminId.trim().toUpperCase(),
+      role: 'SUPER_ADMIN' as const,
+      token: 'AUTHENTICATED',
+      loginTime: new Date().toLocaleTimeString(),
+      isAuthenticated: true
+    } : undefined);
+
+    if (!res.success || !adminSession) {
+      throw new ApiError('Invalid admin credentials', 401, 'INVALID_CREDENTIALS');
     }
-    return { adminSession };
+    return { success: true, adminSession };
   },
 
   async getCurrentAdmin(): Promise<{ adminSession: AdminSession | null }> {

@@ -3,6 +3,7 @@ import { Shield, KeyRound, Lock, Eye, EyeOff, Sparkles, ArrowRight, ShieldCheck,
 import { VerificationSlider } from './VerificationSlider';
 import { SecurityBadgeList } from './SecurityBadge';
 import { playCyberBlip, playCyberClick, playSuccessSound, playAlertSound } from '../utils/audio';
+import { extractErrorMessage } from '../utils/errorUtils';
 import { UserSession } from '../types';
 import { api } from '../services/api';
 
@@ -71,9 +72,10 @@ export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast 
         onShowToast('Access Granted', `Quantum session token authorized for ${res.session.authorizedId}`, 'success');
         onLoginSuccess(res.session);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       playAlertSound();
-      onShowToast('Authentication Failed', err.message || 'Invalid credentials', 'error');
+      const safeMsg = extractErrorMessage(err, 'Invalid credentials');
+      onShowToast('Authentication Failed', safeMsg, 'error');
     } finally {
       setIsAuthenticating(false);
     }

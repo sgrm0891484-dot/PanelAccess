@@ -1,0 +1,447 @@
+{
+  "users": [
+    {
+      "id": "USR-AGENT-0941",
+      "username": "AGENT_01",
+      "passwordHash": "b49541168b2adefcf0e71e1d2f3e2c0994da4f1e5a50b1c98b405ebaf1122d56",
+      "role": "AGENT",
+      "status": "ACTIVE",
+      "createdAt": "2026-08-10 09:20:15",
+      "lastLogin": "2026-08-20 00:15:30",
+      "ipHash": "192.168.1.*** [HASHED]",
+      "purchasedModules": [
+        "angry-mod",
+        "bala-mod-xyz"
+      ],
+      "activeRuntimes": {
+        "angry-mod": {
+          "planTitle": "30 DAYS RUNTIME",
+          "expiresAt": "2026-09-19 22:15:40",
+          "activatedAt": "2026-08-19 22:15:40"
+        },
+        "bala-mod-xyz": {
+          "planTitle": "PERMANENT RUNTIME",
+          "expiresAt": "2099-01-01 00:00:00",
+          "activatedAt": "2026-08-19 18:42:11"
+        }
+      }
+    },
+    {
+      "id": "USR-SEC-7712",
+      "username": "COMMAND_SEC_OP",
+      "passwordHash": "72cc6fbdb491797a00d63333db98c4cf3c335921d9b557122151e8a1ad563d8d",
+      "role": "SECURITY_OFFICER",
+      "status": "ACTIVE",
+      "createdAt": "2026-08-12 14:10:00",
+      "lastLogin": "2026-08-19 21:05:44",
+      "ipHash": "10.0.4.*** [HASHED]",
+      "purchasedModules": [
+        "rapid-core",
+        "gk-panel",
+        "dripclint"
+      ],
+      "activeRuntimes": {
+        "rapid-core": {
+          "planTitle": "PERMANENT RUNTIME",
+          "expiresAt": "2099-01-01 00:00:00",
+          "activatedAt": "2026-08-18 10:00:00"
+        }
+      }
+    },
+    {
+      "id": "USR-AUDIT-9901",
+      "username": "AUDITOR_NODE_99",
+      "passwordHash": "34c0571bc12bb8760e88a6ed62352642e27c6dbfbcb6d4cf4d3aab60f212a5d4",
+      "role": "AGENT",
+      "status": "ACTIVE",
+      "createdAt": "2026-08-15 11:30:22",
+      "lastLogin": "2026-08-18 16:45:10",
+      "ipHash": "192.168.8.*** [HASHED]",
+      "purchasedModules": [
+        "silent-cheats"
+      ],
+      "activeRuntimes": {
+        "silent-cheats": {
+          "planTitle": "15 DAYS RUNTIME",
+          "expiresAt": "2026-09-02 14:03:55",
+          "activatedAt": "2026-08-18 14:03:55"
+        }
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "angry-mod",
+      "name": "ANGRY MOD",
+      "version": "v3.4.1",
+      "subtitle": "Adaptive Neural Guard & Resilience Yield",
+      "description": "High-throughput algorithmic boundary defense framework with real-time heuristic anomaly detection.",
+      "features": [
+        "Heuristic Threat Mitigation",
+        "Sub-millisecond Packet Triage",
+        "Neural Anomaly Classifier"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 120,
+      "tags": [
+        "NEURAL_SHIELD",
+        "GATEWAY",
+        "TLS_INSPECT"
+      ],
+      "iconType": "shield"
+    },
+    {
+      "id": "bala-mod-xyz",
+      "name": "BALA MOD XYZ",
+      "version": "v5.2.0",
+      "subtitle": "Bi-directional Automated Logic Auditor",
+      "description": "Quantum-resilient cryptographic logic validator inspecting state integrity and preventing payload tampering.",
+      "features": [
+        "Logic Assertion Engine",
+        "State Invariant Verifier",
+        "Zero-Knowledge Attestation"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 150,
+      "tags": [
+        "LOGIC_AUDIT",
+        "ZKP",
+        "INTEGRITY"
+      ],
+      "iconType": "cpu"
+    },
+    {
+      "id": "gk-panel",
+      "name": "GK PANEL",
+      "version": "v2.8.4",
+      "subtitle": "Gateway Kernel & Perimeter Analyzer",
+      "description": "Kernel-level traffic governor providing ultra-dense perimeter telemetry and cryptographic session fencing.",
+      "features": [
+        "Perimeter Access Fencing",
+        "Kernel Telemetry Hooks",
+        "Multi-tenant Node Isolation"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 135,
+      "tags": [
+        "KERNEL_TELEMETRY",
+        "PERIMETER",
+        "FENCE"
+      ],
+      "iconType": "zap"
+    },
+    {
+      "id": "rapid-core",
+      "name": "RAPID CORE",
+      "version": "v6.1.0",
+      "subtitle": "Real-time Automated Protocol Defense",
+      "description": "Microsecond protocol sanitizer shielding inbound streams from malformed serialized buffer overruns.",
+      "features": [
+        "Stream Sanitizer Engine",
+        "Buffer Overrun Shield",
+        "Protocol Multiplexer"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 200,
+      "tags": [
+        "PROTOCOL_DEFENSE",
+        "STREAM_SANITIZER"
+      ],
+      "iconType": "terminal"
+    },
+    {
+      "id": "dripclint",
+      "name": "DRIPCLINT",
+      "version": "v1.9.3",
+      "subtitle": "Distributed Runtime Integrity Protection",
+      "description": "Decentralized host telemetry client auditing binary memory layouts for unauthorized dynamic modifications.",
+      "features": [
+        "Dynamic Hash Consistency",
+        "Memory Layout Asserter",
+        "Cryptographic Canary Hooks"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 135,
+      "tags": [
+        "MEMORY_INTEGRITY",
+        "CANARY_WATCH"
+      ],
+      "iconType": "radio"
+    },
+    {
+      "id": "xyz-cheats",
+      "name": "XYZ CHEATS",
+      "version": "v4.0.0",
+      "subtitle": "Cyber Threat Emulation & Attack Tactical Sandbox",
+      "description": "Controlled security test harness simulating adversarial vectors to validate boundary resilience.",
+      "features": [
+        "Adversarial Simulation Harness",
+        "Boundary Stress Suite",
+        "Compliance Validation Reports"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 150,
+      "tags": [
+        "ADVERSARIAL_TEST",
+        "SANDBOX_HARNESS"
+      ],
+      "iconType": "crosshair"
+    },
+    {
+      "id": "silent-cheats",
+      "name": "SILENT CHEATS",
+      "version": "v3.1.2",
+      "subtitle": "Stealth Intelligence & Log Encryption Network Tester",
+      "description": "Zero-footprint audit collector verifying that diagnostic logs are cryptographically sealed against eavesdropping.",
+      "features": [
+        "Zero-Footprint Collector",
+        "Encrypted Diagnostic Channels",
+        "Log Seal Verification"
+      ],
+      "status": "LOCKED",
+      "isAuthorized": false,
+      "basePrice": 120,
+      "tags": [
+        "STEALTH_AUDIT",
+        "ENCRYPTED_LOGS"
+      ],
+      "iconType": "eye"
+    }
+  ],
+  "plans": [
+    {
+      "id": "plan-15d",
+      "duration": "15 DAYS RUNTIME",
+      "days": 15,
+      "price": 120,
+      "currency": "₹",
+      "description": "Standard temporary node token with basic sandbox execution rights.",
+      "features": [
+        "Node Sandbox Telemetry",
+        "Encrypted TLS Tunnel",
+        "15 Days Auto-Revoke"
+      ],
+      "isActive": true
+    },
+    {
+      "id": "plan-20d",
+      "duration": "20 DAYS RUNTIME",
+      "days": 20,
+      "price": 135,
+      "currency": "₹",
+      "description": "Extended threat analysis license with high-frequency telemetry logging.",
+      "features": [
+        "High-Frequency Polling",
+        "Packet Integrity Verifier",
+        "20 Days Runtime"
+      ],
+      "isActive": true
+    },
+    {
+      "id": "plan-30d",
+      "duration": "30 DAYS RUNTIME",
+      "days": 30,
+      "price": 150,
+      "currency": "₹",
+      "badge": "RECOMMENDED",
+      "description": "Full production-grade security deployment with quantum cipher resilience.",
+      "features": [
+        "Full Quantum Shielding",
+        "Priority Gateway Routing",
+        "30 Days Full Access",
+        "Real-time Telemetry"
+      ],
+      "isActive": true
+    },
+    {
+      "id": "plan-perm",
+      "duration": "PERMANENT RUNTIME",
+      "days": 9999,
+      "price": 200,
+      "currency": "₹",
+      "badge": "LIFETIME",
+      "description": "Perpetual node authorization with unrestricted continuous defense updates.",
+      "features": [
+        "Perpetual Gateway License",
+        "Zero Auto-Expiry",
+        "Custom Cryptographic Root",
+        "Unlimited Diagnostic Cycles"
+      ],
+      "isActive": true
+    }
+  ],
+  "orders": [
+    {
+      "id": "ORD-9042-8819",
+      "user": "AGENT_01",
+      "userId": "USR-AGENT-0941",
+      "moduleId": "bala-mod-xyz",
+      "moduleName": "BALA MOD XYZ",
+      "planId": "plan-30d",
+      "planTitle": "30 DAYS RUNTIME",
+      "durationDays": 30,
+      "amount": 150,
+      "paymentStatus": "VERIFIED",
+      "accessStatus": "ACTIVE",
+      "createdAt": "2026-08-19 22:15:40",
+      "expiresAt": "2026-09-19 22:15:40",
+      "method": "UPI QR GATEWAY",
+      "transactionRef": "UPI-TXN-9402810"
+    },
+    {
+      "id": "ORD-8841-3310",
+      "user": "COMMAND_SEC_OP",
+      "userId": "USR-SEC-7712",
+      "moduleId": "rapid-core",
+      "moduleName": "RAPID CORE",
+      "planId": "plan-perm",
+      "planTitle": "PERMANENT RUNTIME",
+      "durationDays": 9999,
+      "amount": 200,
+      "paymentStatus": "VERIFIED",
+      "accessStatus": "ACTIVE",
+      "createdAt": "2026-08-19 18:42:11",
+      "expiresAt": "2099-01-01 00:00:00",
+      "method": "UPI QR GATEWAY",
+      "transactionRef": "UPI-TXN-8841920"
+    },
+    {
+      "id": "ORD-7190-2094",
+      "user": "AUDITOR_NODE_99",
+      "userId": "USR-AUDIT-9901",
+      "moduleId": "silent-cheats",
+      "moduleName": "SILENT CHEATS",
+      "planId": "plan-15d",
+      "planTitle": "15 DAYS RUNTIME",
+      "durationDays": 15,
+      "amount": 120,
+      "paymentStatus": "VERIFIED",
+      "accessStatus": "ACTIVE",
+      "createdAt": "2026-08-18 14:03:55",
+      "expiresAt": "2026-09-02 14:03:55",
+      "method": "UPI QR GATEWAY",
+      "transactionRef": "UPI-TXN-7190442"
+    }
+  ],
+  "paymentSettings": {
+    "upiVpa": "aegis.defense@icici",
+    "merchantName": "AEGIS QUANTUM DEFENSE",
+    "autoVerification": true,
+    "verificationLatencyMs": 1800,
+    "minAmount": 50,
+    "maxAmount": 10000,
+    "webhookEndpoint": "/api/webhooks/payment",
+    "gatewayStatus": "ONLINE"
+  },
+  "adminLogs": [
+    {
+      "id": "act-1787217776366-2yq3",
+      "timestamp": "8/20/2026, 9:22:56 AM",
+      "action": "ADMIN_LOGIN",
+      "adminId": "ADMINXD",
+      "details": "Successful administrator authentication to Security Control Matrix",
+      "ipHash": "127.0.0... [ENCLAVE]"
+    },
+    {
+      "id": "act-1787217776346-6pr1",
+      "timestamp": "8/20/2026, 9:22:56 AM",
+      "action": "LOGIN_FAILED",
+      "adminId": "WRONG",
+      "details": "Failed admin authentication attempt",
+      "ipHash": "127.0.0... [ENCLAVE]"
+    },
+    {
+      "id": "act-1787217195639-5dmf",
+      "timestamp": "8/20/2026, 9:13:15 AM",
+      "action": "ADMIN_LOGIN",
+      "adminId": "ADMINXD",
+      "details": "Successful administrator authentication to Security Control Matrix",
+      "ipHash": "2409:40... [ENCLAVE]"
+    },
+    {
+      "id": "act-1787213885528-9wds",
+      "timestamp": "8/20/2026, 8:18:05 AM",
+      "action": "ADMIN_LOGIN",
+      "adminId": "ADMINXD",
+      "details": "Successful administrator login to Control Matrix",
+      "ipHash": "2409:40... [ENCLAVE]"
+    },
+    {
+      "id": "act-1",
+      "timestamp": "2026-08-18 10:00:00",
+      "action": "SYSTEM_BOOT",
+      "adminId": "ADMINXD",
+      "details": "AEGIS Enterprise Security Control Matrix initialized with quantum-resistant encryption",
+      "ipHash": "10.0.0.1 [ENCLAVE]"
+    },
+    {
+      "id": "act-2",
+      "timestamp": "2026-08-19 18:45:00",
+      "action": "PRICE_UPDATED",
+      "adminId": "ADMINXD",
+      "details": "Updated runtime tier policies for 30 DAYS RUNTIME and PERMANENT RUNTIME",
+      "ipHash": "10.0.0.1 [ENCLAVE]"
+    }
+  ],
+  "systemLogs": [
+    {
+      "id": "log-1",
+      "timestamp": "12:41:08",
+      "level": "SYS",
+      "message": "AEGIS // DEFENSE v4.8 QUANTUM SECURITY GATEWAY INITIALIZED",
+      "source": "CORE_KERNEL"
+    },
+    {
+      "id": "log-2",
+      "timestamp": "12:41:09",
+      "level": "AUTH",
+      "message": "ZERO-KNOWLEDGE AUTHENTICATION ENGINE (ZKP-1024) ONLINE",
+      "source": "AUTH_GATEWAY"
+    },
+    {
+      "id": "log-3",
+      "timestamp": "12:41:10",
+      "level": "INFO",
+      "message": "MODULE REGISTRY SYNCHRONIZED [7 DEFENSE ENGINES LOADED]",
+      "source": "MODULE_REGISTRY"
+    },
+    {
+      "id": "log-4",
+      "timestamp": "12:41:11",
+      "level": "PAY",
+      "message": "UPI QR SETTLEMENT ADAPTER ONLINE AND VERIFIED",
+      "source": "GATEWAY_SETTLE"
+    },
+    {
+      "id": "log-5",
+      "timestamp": "12:41:12",
+      "level": "ENCRYPT",
+      "message": "KYBER-1024 QUANTUM RESISTANT ENCRYPTION TUNNEL SECURED",
+      "source": "CRYPTO_CORE"
+    },
+    {
+      "id": "sys-1787213885529-0zcf",
+      "timestamp": "8:18:05 AM",
+      "level": "AUTH",
+      "message": "ADMIN_SESSION_AUTHORIZED: Master controller ADMINXD online",
+      "source": "ADMIN_KERNEL"
+    }
+  ],
+  "adminUsers": [
+    {
+      "id": "ADM-MASTER-01",
+      "username": "ADMINXD",
+      "passwordHash": "e50e66d5b2f8e97ffe6c74c4c3366b5421f60d53fa02f83251699f596890fe5e",
+      "role": "SUPER_ADMIN",
+      "status": "ACTIVE",
+      "createdAt": "2026-08-01 00:00:00",
+      "lastLogin": "2026-08-20 00:00:00"
+    }
+  ]
+}
