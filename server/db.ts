@@ -1,18 +1,31 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import pg from 'pg';
 import { 
   UserRecord, SecurityModule, RuntimePlan, OrderRecord, 
   PaymentSettings, AdminActivityLog, LogEntry, AdminStats 
 } from '../src/types';
 
+const { Pool } = pg;
+
+const AUTH_SECRET = process.env.AUTH_SECRET || 'aegis-quantum-auth-secret-key-2026';
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
 // Helper to hash password with salt
-export function hashPassword(password: string, salt: string = 'aegis-quantum-salt-2026'): string {
-  return crypto.createHmac('sha256', salt).update(password).digest('hex');
+export function hashPassword(password: string): string {
+  return crypto.createHmac('sha256', AUTH_SECRET).update(password.trim()).digest('hex');
 }
+
+export function verifyPassword(password: string, hash: string): boolean {
+  const calculated = hashPassword(password);
+  return crypto.timingSafeEqual(Buffer.from(calculated), Buffer.from(hash));
+}
+
+// ----------------------------------------------------
+// DEFAULT SEED DATA
+// ----------------------------------------------------
 
 export const DEFAULT_PLANS: RuntimePlan[] = [
   {
@@ -323,6 +336,7 @@ export const INITIAL_LOGS: LogEntry[] = [
 
 export interface DatabaseSchema {
   users: (UserRecord & { passwordHash: string })[];
+  adminUsers: { id: string; username: string; passwordHash: string; role: string; status: string; createdAt: string; lastLogin?: string }[];
   modules: SecurityModule[];
   plans: RuntimePlan[];
   orders: OrderRecord[];
@@ -332,6 +346,56 @@ export interface DatabaseSchema {
 }
 
 let dbInstance: DatabaseSchema | null = null;
+let pgPool: pg.Pool | null = null;
+
+// Initialize PostgreSQL Pool if DATABASE_URL is available
+export function getPgPool(): pg.Pool | null {
+  const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
+  if (!dbUrl) return null;
+
+  if (!pgPool) {
+    pgPool = new Pool({
+      connectionString: dbUrl,
+      ssl: process.env.NODE_ENV === 'production' || dbUrl.includes('supabase') 
+        ? { rejectUnauthorized: false } 
+        : undefined,
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    });
+
+    pgPool.on('error', (err) => {
+      console.error('[PostgreSQL] Unexpected pool error:', err);
+    });
+  }
+
+  return pgPool;
+}
+
+// Auto-run schema migration on Postgres if connected
+export async function initializePostgresDatabase(): Promise<boolean> {
+  const pool = getPgPool();
+  if (!pool) return false;
+
+  try {
+    const client = await pool.connect();
+    try {
+      console.log('[PostgreSQL] Connected. Verifying database schema...');
+      const schemaSqlPath = path.join(__dirname, 'schema.sql');
+      if (fs.existsSync(schemaSqlPath)) {
+        const sql = fs.readFileSync(schemaSqlPath, 'utf-8');
+        await client.query(sql);
+        console.log('[PostgreSQL] Schema migration checked and up to date.');
+      }
+      return true;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('[PostgreSQL] Initialization error (falling back to storage):', err);
+    return false;
+  }
+}
 
 export function loadDatabase(): DatabaseSchema {
   if (dbInstance) return dbInstance;
@@ -344,14 +408,38 @@ export function loadDatabase(): DatabaseSchema {
     if (fs.existsSync(DB_FILE)) {
       const data = fs.readFileSync(DB_FILE, 'utf-8');
       dbInstance = JSON.parse(data);
+      if (!dbInstance!.adminUsers) {
+        dbInstance!.adminUsers = [
+          {
+            id: 'ADM-MASTER-01',
+            username: process.env.ADMIN_ID || 'ADMINXD',
+            passwordHash: hashPassword(process.env.ADMIN_PASS_KEY || 'ADMIN5921N'),
+            role: 'SUPER_ADMIN',
+            status: 'ACTIVE',
+            createdAt: '2026-08-01 00:00:00',
+            lastLogin: '2026-08-20 00:00:00'
+          }
+        ];
+      }
       return dbInstance!;
     }
   } catch (err) {
-    console.error('Error loading database file, initializing defaults:', err);
+    console.error('Error loading local database file, creating defaults:', err);
   }
 
   dbInstance = {
     users: [...INITIAL_USERS],
+    adminUsers: [
+      {
+        id: 'ADM-MASTER-01',
+        username: process.env.ADMIN_ID || 'ADMINXD',
+        passwordHash: hashPassword(process.env.ADMIN_PASS_KEY || 'ADMIN5921N'),
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        createdAt: '2026-08-01 00:00:00',
+        lastLogin: '2026-08-20 00:00:00'
+      }
+    ],
     modules: [...INITIAL_MODULES],
     plans: [...DEFAULT_PLANS],
     orders: [...INITIAL_ORDERS],
@@ -372,13 +460,24 @@ export function saveDatabase(data: DatabaseSchema) {
     }
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
   } catch (err) {
-    console.error('Failed to write database file:', err);
+    // Non-blocking save for serverless read-only contexts
   }
 }
 
 export function resetDatabase(): DatabaseSchema {
   const freshDb: DatabaseSchema = {
     users: [...INITIAL_USERS],
+    adminUsers: [
+      {
+        id: 'ADM-MASTER-01',
+        username: process.env.ADMIN_ID || 'ADMINXD',
+        passwordHash: hashPassword(process.env.ADMIN_PASS_KEY || 'ADMIN5921N'),
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+        createdAt: '2026-08-01 00:00:00',
+        lastLogin: '2026-08-20 00:00:00'
+      }
+    ],
     modules: [...INITIAL_MODULES],
     plans: [...DEFAULT_PLANS],
     orders: [...INITIAL_ORDERS],
