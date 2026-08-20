@@ -34,13 +34,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden md:inline text-slate-400">LATENCY: <span className="text-cyan-300">1.2ms</span></span>
-          <span className="text-cyan-500/60">NODE: ASIA-SOUTH1</span>
+          {session && <span className="text-cyan-500/60">NODE: ASIA-SOUTH1</span>}
         </div>
       </div>
 
       {/* Main navigation header */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2">
-        {/* Left branding - Clicking AEGIS logo triggers Admin Portal Login */}
+        {/* Left branding - Clicking logo triggers Admin Portal Login */}
         <div 
           onClick={() => {
             playCyberClick();
@@ -48,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
           }}
           className="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer group select-none"
           id="header-brand-logo"
-          title="AEGIS Core Gateway"
+          title="Admin Control Matrix Portal"
         >
           <div className="relative">
             <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg bg-cyan-950/60 border border-cyan-400/50 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.35)] group-hover:shadow-[0_0_25px_rgba(6,182,212,0.7)] group-hover:border-cyan-300 transition-all duration-300">
@@ -63,10 +63,10 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
               <span className="text-[11px] sm:text-xs font-mono-tech text-cyan-400 tracking-widest uppercase font-semibold">
-                AEGIS //
+                VERIFY //
               </span>
               <span className="text-base sm:text-2xl font-cyber font-bold tracking-wider text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
-                DEFENSE
+                BUY
               </span>
               <span className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 font-mono-tech uppercase font-medium">
                 v4.8
@@ -76,48 +76,52 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <span className="text-[9px] sm:text-[10px] text-cyan-400/70 font-mono-tech tracking-wider uppercase">
-              QUANTUM SECURITY GATEWAY
+              KEY BUY AND VERIFY GATEWAY
             </span>
           </div>
         </div>
 
         {/* Right actions */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* Console / Terminal button */}
-          <button
-            id="header-btn-console"
-            onClick={() => {
-              playCyberClick();
-              onNavigate('/console');
-            }}
-            className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-mono-tech flex items-center gap-1.5 transition-all duration-200 ${
-              currentPath === '/console'
-                ? 'bg-cyan-500 text-black font-semibold shadow-[0_0_15px_rgba(6,182,212,0.6)]'
-                : 'bg-slate-900/80 hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-300 border border-cyan-500/25 hover:border-cyan-400/50'
-            }`}
-            title="Open Console Terminal"
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline tracking-wide">CONSOLE</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
-          </button>
+          {/* Console / Terminal button - only shown during active session */}
+          {session && (
+            <button
+              id="header-btn-console"
+              onClick={() => {
+                playCyberClick();
+                onNavigate('/console');
+              }}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-mono-tech flex items-center gap-1.5 transition-all duration-200 ${
+                currentPath === '/console'
+                  ? 'bg-cyan-500 text-black font-semibold shadow-[0_0_15px_rgba(6,182,212,0.6)]'
+                  : 'bg-slate-900/80 hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-300 border border-cyan-500/25 hover:border-cyan-400/50'
+              }`}
+              title="Open Console Terminal"
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline tracking-wide">CONSOLE</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
+            </button>
+          )}
 
-          {/* Audio toggle button */}
-          <button
-            id="header-btn-audio-toggle"
-            onClick={() => {
-              onToggleSound();
-              playCyberBlip(soundEnabled ? 300 : 700);
-            }}
-            className={`p-1.5 sm:p-2 rounded-md border text-xs transition-all duration-200 ${
-              soundEnabled
-                ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
-                : 'bg-slate-900/80 border-slate-700 text-slate-500'
-            }`}
-            title={soundEnabled ? 'Mute Cyber Audio' : 'Enable Cyber Audio'}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
+          {/* Audio toggle button - only shown during active session */}
+          {session && (
+            <button
+              id="header-btn-audio-toggle"
+              onClick={() => {
+                onToggleSound();
+                playCyberBlip(soundEnabled ? 300 : 700);
+              }}
+              className={`p-1.5 sm:p-2 rounded-md border text-xs transition-all duration-200 ${
+                soundEnabled
+                  ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                  : 'bg-slate-900/80 border-slate-700 text-slate-500'
+              }`}
+              title={soundEnabled ? 'Mute Cyber Audio' : 'Enable Cyber Audio'}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          )}
 
           {/* Session / Logout */}
           {session && (

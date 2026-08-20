@@ -50,6 +50,12 @@ app.use(cookieParser());
 
 // Safe Production Request & Error Logging (Requirement 13: Zero leaks of passwords/secrets)
 app.use((req: Request, res: Response, next: NextFunction) => {
+  const url = req.originalUrl || req.url;
+  // Skip dev asset noise (/src, /@vite, /node_modules, etc.)
+  if (url.startsWith('/src/') || url.startsWith('/@') || url.startsWith('/node_modules/') || url.endsWith('.ico') || url.endsWith('.map')) {
+    return next();
+  }
+
   const start = Date.now();
   const safeIp = ((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '10.0.0.1')
     .split(',')[0].trim().slice(0, 10);
@@ -57,7 +63,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.on('finish', () => {
     const duration = Date.now() - start;
     console.log(
-      `[AEGIS GATEWAY] ${new Date().toISOString()} | ${req.method} ${req.originalUrl || req.url} | STATUS: ${res.statusCode} | ${duration}ms | IP: ${safeIp}...`
+      `[AEGIS GATEWAY] ${new Date().toISOString()} | ${req.method} ${url} | STATUS: ${res.statusCode} | ${duration}ms | IP: ${safeIp}...`
     );
   });
   next();

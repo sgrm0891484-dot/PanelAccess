@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { Shield, KeyRound, Lock, Eye, EyeOff, Sparkles, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Shield, KeyRound, Lock, Eye, EyeOff, ArrowRight, RefreshCw } from 'lucide-react';
 import { VerificationSlider } from './VerificationSlider';
-import { SecurityBadgeList } from './SecurityBadge';
 import { playCyberBlip, playCyberClick, playSuccessSound, playAlertSound } from '../utils/audio';
 import { extractErrorMessage } from '../utils/errorUtils';
 import { UserSession } from '../types';
@@ -13,37 +12,11 @@ interface AuthCardProps {
 }
 
 export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast }) => {
-  const [authorizedId, setAuthorizedId] = useState('AGENT_01');
-  const [passKey, setPassKey] = useState('AEGIS-KEY-9942');
+  const [authorizedId, setAuthorizedId] = useState('');
+  const [passKey, setPassKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isHumanVerified, setIsHumanVerified] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-
-  // Calculate dynamic cipher entropy
-  const entropyInfo = useMemo(() => {
-    if (!passKey) return { label: 'AWAITING KEY', level: 0, color: 'text-slate-500' };
-    const length = passKey.length;
-    const hasNum = /\d/.test(passKey);
-    const hasSpecial = /[^A-Za-z0-9]/.test(passKey);
-    const hasUpper = /[A-Z]/.test(passKey);
-
-    let score = length * 5;
-    if (hasNum) score += 20;
-    if (hasSpecial) score += 25;
-    if (hasUpper) score += 15;
-
-    if (score < 30) return { label: 'LOW ENTROPY', level: 1, color: 'text-amber-400' };
-    if (score < 60) return { label: 'STANDARD CIPHER', level: 2, color: 'text-cyan-400' };
-    if (score < 80) return { label: 'HIGH INTEGRITY (91.4%)', level: 3, color: 'text-cyan-300' };
-    return { label: 'QUANTUM CERTIFIED (99.8%)', level: 4, color: 'text-emerald-400' };
-  }, [passKey]);
-
-  const handlePreset = (id: string, key: string, role: string) => {
-    playCyberClick();
-    setAuthorizedId(id);
-    setPassKey(key);
-    onShowToast('Node Selected', `Credentials loaded for ${role}`, 'info');
-  };
 
   const handleVerifyAccess = async () => {
     if (!authorizedId.trim()) {
@@ -82,11 +55,11 @@ export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast 
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto px-3 sm:px-4 py-4 sm:py-8 flex flex-col items-center">
+    <div className="w-full max-w-lg mx-auto px-4 py-8 sm:py-12 flex flex-col items-center justify-center">
       {/* Outer Glow Container */}
       <div 
         id="auth-card-panel"
-        className="w-full rounded-2xl bg-[#091124]/85 border border-cyan-500/35 p-5 sm:p-8 backdrop-blur-xl shadow-[0_0_40px_rgba(6,182,212,0.15)] relative overflow-hidden"
+        className="w-full rounded-2xl bg-[#091124]/90 border border-cyan-500/35 p-6 sm:p-8 backdrop-blur-xl shadow-[0_0_40px_rgba(6,182,212,0.15)] relative overflow-hidden"
       >
         {/* Subtle decorative grid background */}
         <div className="absolute inset-0 cyber-grid-bg opacity-30 pointer-events-none" />
@@ -95,7 +68,7 @@ export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast 
         <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
 
         {/* Top Badge */}
-        <div className="flex justify-center mb-4 sm:mb-5">
+        <div className="flex justify-center mb-5 sm:mb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-400/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[11px] sm:text-xs font-mono-tech font-bold text-cyan-300 tracking-wider uppercase">
@@ -105,9 +78,9 @@ export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast 
         </div>
 
         {/* Heading */}
-        <div className="text-center space-y-1.5 mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-cyber font-bold tracking-wider text-white flex items-center justify-center gap-2">
-            <Shield className="w-6 h-6 text-cyan-400 inline-block drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+        <div className="text-center space-y-2 mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-cyber font-bold tracking-wider text-white flex items-center justify-center gap-2.5">
+            <Shield className="w-6 h-6 sm:w-7 sm:h-7 text-cyan-400 inline-block drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
             PANEL ACCESS
           </h1>
           <p className="text-xs sm:text-sm font-mono-tech text-cyan-300/80 tracking-wide max-w-md mx-auto">
@@ -175,69 +148,13 @@ export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast 
             </div>
           </div>
 
-          {/* Quick Node Preset Pills */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-            <span className="text-[10px] font-mono-tech text-slate-400">SELECT NODE:</span>
-            <button
-              id="btn-preset-agent"
-              type="button"
-              onClick={() => handlePreset('AGENT_01', 'AEGIS-KEY-9942', 'Primary Agent')}
-              className="text-[10px] font-mono-tech px-2 py-0.5 rounded bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 transition-colors"
-            >
-              AGENT_01
-            </button>
-            <button
-              id="btn-preset-admin"
-              type="button"
-              onClick={() => handlePreset('COMMAND_SEC_OP', 'QUANTUM-SEC-9900', 'Security Officer')}
-              className="text-[10px] font-mono-tech px-2 py-0.5 rounded bg-blue-950/50 hover:bg-blue-900/60 border border-blue-500/30 text-blue-300 transition-colors"
-            >
-              COMMAND_SEC_OP
-            </button>
-            <button
-              id="btn-preset-auditor"
-              type="button"
-              onClick={() => handlePreset('AUDITOR_NODE_99', 'AUDIT-SEC-7741', 'Auditor Node')}
-              className="text-[10px] font-mono-tech px-2 py-0.5 rounded bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 transition-colors"
-            >
-              AUDITOR_NODE_99
-            </button>
-          </div>
-
-          {/* Cipher Entropy Meter */}
-          <div className="p-3 rounded-lg bg-[#040817]/90 border border-cyan-500/20 space-y-2" id="entropy-container">
-            <div className="flex items-center justify-between text-xs font-mono-tech">
-              <span className="text-slate-400">CIPHER ENTROPY:</span>
-              <span className={`font-semibold tracking-wider ${entropyInfo.color}`}>
-                {entropyInfo.label}
-              </span>
-            </div>
-
-            {/* Segmented animated progress blocks */}
-            <div className="grid grid-cols-4 gap-1.5 h-2">
-              {[1, 2, 3, 4].map((seg) => {
-                const isActive = entropyInfo.level >= seg;
-                return (
-                  <div
-                    key={seg}
-                    className={`rounded-sm transition-all duration-300 ${
-                      isActive
-                        ? seg === 4
-                          ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
-                          : 'bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.7)]'
-                        : 'bg-slate-800/80'
-                    }`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
           {/* Proof of Human Identity Slider */}
-          <VerificationSlider
-            isVerified={isHumanVerified}
-            onVerify={(val) => setIsHumanVerified(val)}
-          />
+          <div className="pt-1">
+            <VerificationSlider
+              isVerified={isHumanVerified}
+              onVerify={(val) => setIsHumanVerified(val)}
+            />
+          </div>
 
           {/* Verify & Access Button */}
           <button
@@ -264,9 +181,6 @@ export const AuthCard: React.FC<AuthCardProps> = ({ onLoginSuccess, onShowToast 
             )}
           </button>
         </div>
-
-        {/* Security Badges */}
-        <SecurityBadgeList />
       </div>
     </div>
   );

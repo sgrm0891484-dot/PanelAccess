@@ -1,6 +1,6 @@
 {
   "name": "AEGIS // DEFENSE",
-  "description": "Enterprise-grade quantum security gateway featuring multi-layer cryptographic authentication, modular defense engines, runtime licenses, verified UPI settlement, and unified administration console.",
+  "description": "Enterprise-grade key buy and verify gateway featuring multi-layer cryptographic authentication, modular defense engines, runtime licenses, verified UPI settlement, and unified administration console.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
