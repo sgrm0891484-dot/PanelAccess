@@ -1,6 +1,6 @@
 {
   "name": "AEGIS // DEFENSE",
-  "description": "Enterprise-grade key buy and verify gateway featuring multi-layer cryptographic authentication, modular defense engines, runtime licenses, verified UPI settlement, and unified administration console.",
+  "description": "VERIFY // BUY key buy and verify gateway featuring complete customer management system, role-based authentication, individual customer pricing, module permissions, expiration handling, and admin control matrix.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

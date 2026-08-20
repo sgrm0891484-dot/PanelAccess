@@ -291,6 +291,7 @@ export default function App() {
             onOpenInspector={handleOpenInspector}
             onToggleModuleStatus={handleToggleModuleStatus}
             onLogout={handleLogout}
+            onShowToast={showToast}
           />
         )}
 
@@ -349,14 +350,12 @@ export default function App() {
       <footer className="w-full border-t border-slate-900 bg-[#02050e]/90 py-3 px-4 text-center font-mono-tech text-[11px] text-slate-500 relative z-10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
-            AEGIS // DEFENSE &copy; 2026 QUANTUM SECURITY ARCHITECTURE. ALL RIGHTS RESERVED.
+            VERIFY // BUY &copy; 2026 KEY BUY AND VERIFY GATEWAY. ALL RIGHTS RESERVED.
           </div>
           <div className="flex items-center gap-3 text-slate-400">
-            <span>TLS 1.3</span>
+            <span>KEY VERIFICATION</span>
             <span>•</span>
-            <span>ZKP-1024</span>
-            <span>•</span>
-            <span>SOC2 TYPE II</span>
+            <span>CUSTOMER GATEWAY</span>
           </div>
         </div>
       </footer>

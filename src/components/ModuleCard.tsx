@@ -8,6 +8,7 @@ import { playCyberClick, playCyberBlip } from '../utils/audio';
 
 interface ModuleCardProps {
   module: SecurityModule;
+  isAssigned?: boolean;
   onRequestAccess: (module: SecurityModule) => void;
   onOpenInspector: (module: SecurityModule) => void;
   onToggleStatus: (moduleId: string) => void;
@@ -15,6 +16,7 @@ interface ModuleCardProps {
 
 export const ModuleCard: React.FC<ModuleCardProps> = ({
   module,
+  isAssigned = true,
   onRequestAccess,
   onOpenInspector,
   onToggleStatus
@@ -126,7 +128,12 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
       <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
         {/* Pass Status */}
         <div className="flex items-center gap-1.5 text-xs font-mono-tech">
-          {module.isAuthorized ? (
+          {!isAssigned ? (
+            <span className="text-rose-400 font-semibold flex items-center gap-1">
+              <Lock className="w-3.5 h-3.5 text-rose-400" />
+              ACCESS NOT ASSIGNED
+            </span>
+          ) : module.isAuthorized ? (
             <span className="text-emerald-400 font-semibold flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
               AUTHORIZED & ACTIVE
@@ -141,7 +148,14 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
 
         {/* Action Button */}
         <div>
-          {module.isAuthorized ? (
+          {!isAssigned ? (
+            <span
+              id={`btn-unassigned-${module.id}`}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-500 font-mono-tech text-xs font-semibold uppercase tracking-wider inline-block cursor-not-allowed"
+            >
+              ACCESS NOT ASSIGNED
+            </span>
+          ) : module.isAuthorized ? (
             <button
               id={`btn-launch-${module.id}`}
               onClick={() => {

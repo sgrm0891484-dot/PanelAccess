@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Shield, Terminal, ShieldAlert, LogOut, Search, Filter, 
-  Sparkles, CheckCircle2, Lock, ArrowLeft, Cpu, Activity, RefreshCw 
+  Sparkles, CheckCircle2, Lock, ArrowLeft, Cpu, Activity, RefreshCw,
+  Copy, User, Clock, DollarSign, Key, Layers
 } from 'lucide-react';
 import { SecurityModule, RoutePath, UserSession } from '../types';
 import { ModuleCard } from './ModuleCard';
@@ -15,6 +16,7 @@ interface ModuleDashboardProps {
   onOpenInspector: (module: SecurityModule) => void;
   onToggleModuleStatus: (moduleId: string) => void;
   onLogout: () => void;
+  onShowToast?: (title: string, msg: string, type: 'info' | 'success' | 'warn' | 'error') => void;
 }
 
 export const ModuleDashboard: React.FC<ModuleDashboardProps> = ({
@@ -24,10 +26,32 @@ export const ModuleDashboard: React.FC<ModuleDashboardProps> = ({
   onRequestAccess,
   onOpenInspector,
   onToggleModuleStatus,
-  onLogout
+  onLogout,
+  onShowToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'AUTHORIZED' | 'LOCKED'>('ALL');
+
+  const customerId = session?.customerId || (session?.authorizedId?.startsWith('CUST-') ? session.authorizedId : 'CUST-001');
+  const username = session?.authorizedId || 'AGENT_01';
+  const status = session ? 'ACTIVE' : 'OFFLINE';
+  const currentPrice = session?.useDefaultPrice ? '₹150 (STANDARD RATE)' : (session?.customPrice ? `₹${session.customPrice} (CUSTOM)` : '₹150');
+  const expiryDate = session?.expiryDate || '2026-09-30';
+
+  const isModuleAssigned = (modId: string) => {
+    if (!session) return true;
+    const assigned = session.assignedModules;
+    if (!assigned || assigned.length === 0 || assigned.includes('ALL')) return true;
+    return assigned.includes(modId);
+  };
+
+  const handleCopy = (text: string, label: string) => {
+    playCyberBlip(1100);
+    navigator.clipboard.writeText(text);
+    if (onShowToast) {
+      onShowToast('Copied', 'Copied successfully.', 'success');
+    }
+  };
 
   const filteredModules = modules.filter((m) => {
     const matchesSearch = 
@@ -117,6 +141,97 @@ export const ModuleDashboard: React.FC<ModuleDashboardProps> = ({
         </div>
       </div>
 
+      {/* ==================================================== */}
+      {/* MY ACCOUNT SECTION (CUSTOMER PRIVATE VIEW) */}
+      {/* ==================================================== */}
+      <div 
+        id="my-account-panel"
+        className="w-full rounded-2xl bg-[#081024]/95 border border-cyan-500/30 p-4 sm:p-5 backdrop-blur-xl shadow-[0_0_25px_rgba(6,182,212,0.12)] relative overflow-hidden"
+      >
+        <div className="flex items-center justify-between gap-3 mb-3.5 pb-2.5 border-b border-cyan-500/20">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-cyan-400" />
+            <h2 className="font-cyber font-bold text-sm sm:text-base text-white tracking-wider">
+              MY ACCOUNT
+            </h2>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono-tech font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            ACCOUNT STATUS: {status}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono-tech">
+          {/* Item 1: Customer ID + Copy Button */}
+          <div className="p-3 rounded-xl bg-[#040816] border border-cyan-500/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold">CUSTOMER ID</span>
+              <span className="text-cyan-400 font-bold">{customerId}</span>
+            </div>
+            <button
+              id="btn-copy-customer-id"
+              onClick={() => handleCopy(customerId, 'Customer ID')}
+              className="w-full py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+            >
+              <Copy className="w-3 h-3" />
+              <span>COPY CUSTOMER ID</span>
+            </button>
+          </div>
+
+          {/* Item 2: Username + Copy Button */}
+          <div className="p-3 rounded-xl bg-[#040816] border border-cyan-500/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold">USERNAME</span>
+              <span className="text-white font-bold">{username}</span>
+            </div>
+            <button
+              id="btn-copy-username"
+              onClick={() => handleCopy(username, 'Username')}
+              className="w-full py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+            >
+              <Copy className="w-3 h-3" />
+              <span>COPY USERNAME</span>
+            </button>
+          </div>
+
+          {/* Item 3: Current Price & Expiry */}
+          <div className="p-3 rounded-xl bg-[#040816] border border-cyan-500/20 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold">CURRENT PRICE</span>
+              <span className="text-emerald-400 font-bold">{currentPrice}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold">EXPIRY DATE</span>
+              <span className="text-white font-bold">{expiryDate}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Item 4: Assigned Modules Row */}
+        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono-tech">
+          <div className="flex items-center gap-2">
+            <Layers className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-slate-400 font-semibold">ASSIGNED MODULES:</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(!session?.assignedModules || session.assignedModules.length === 0 || session.assignedModules.includes('ALL')) ? (
+              <span className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold">
+                ALL MODULES GRANTED
+              </span>
+            ) : (
+              session.assignedModules.map((modId) => {
+                const mod = modules.find(m => m.id === modId);
+                return (
+                  <span key={modId} className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 text-[10px] font-semibold">
+                    {mod?.name || modId}
+                  </span>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Filter and Search Controls */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         {/* Search Box */}
@@ -166,6 +281,7 @@ export const ModuleDashboard: React.FC<ModuleDashboardProps> = ({
             <ModuleCard
               key={mod.id}
               module={mod}
+              isAssigned={isModuleAssigned(mod.id)}
               onRequestAccess={onRequestAccess}
               onOpenInspector={onOpenInspector}
               onToggleStatus={onToggleModuleStatus}
