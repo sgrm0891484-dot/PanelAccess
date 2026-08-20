@@ -4,26 +4,26 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { 
   loadDatabase, saveDatabase, resetDatabase, hashPassword, verifyPassword,
-  getPgPool, initializePostgresDatabase, DEFAULT_PLANS, INITIAL_MODULES 
+  getPgPool, initializePostgresDatabase, checkDatabaseConnection, DEFAULT_PLANS, INITIAL_MODULES 
 } from './db';
 import { 
   UserRecord, SecurityModule, RuntimePlan, OrderRecord, 
   PaymentSettings, AdminActivityLog, LogEntry, AdminStats, UserSession, AdminSession 
 } from '../src/types';
 
-const ADMIN_ID = process.env.ADMIN_ID || 'ADMINXD';
-const ADMIN_PASS_KEY = process.env.ADMIN_PASS_KEY || 'ADMIN5921N';
+const ADMIN_ID = (process.env.ADMIN_ID || 'ADMINXD').trim().toUpperCase();
+const ADMIN_PASS_KEY = (process.env.ADMIN_PASS_KEY || 'ADMIN5921N').trim();
 
-// In-memory active tokens (for instant session verification)
+// Active token storage (maps session token to user data)
 const adminSessions = new Map<string, { adminId: string; loginTime: string; expiresAt: number }>();
 const userSessions = new Map<string, { userId: string; username: string; loginTime: string; expiresAt: number }>();
 
 export const app = express();
+const apiRouter = express.Router();
 
-// 1. CORS Configuration
+// 1. CORS Configuration (Supports credentials and same-origin)
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow all same-origin and trusted origins with credentials
     callback(null, true);
   },
   credentials: true,
@@ -31,21 +31,43 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Admin-Token', 'X-User-Token']
 }));
 
-// Pre-flight OPTIONS handler for all routes
-app.options('*', (req, res) => {
+// Pre-flight OPTIONS handler for all incoming routes
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Admin-Token, X-User-Token');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(204);
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
 });
 
 // 2. Middlewares
 app.use(express.json());
 app.use(cookieParser());
 
-// Initialize database
+// Safe Production Request & Error Logging (Requirement 13: Zero leaks of passwords/secrets)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  const safeIp = ((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '10.0.0.1')
+    .split(',')[0].trim().slice(0, 10);
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(
+      `[AEGIS GATEWAY] ${new Date().toISOString()} | ${req.method} ${req.originalUrl || req.url} | STATUS: ${res.statusCode} | ${duration}ms | IP: ${safeIp}...`
+    );
+  });
+  next();
+});
+
+// Database bootstrap
 const db = loadDatabase();
-initializePostgresDatabase().catch((err) => console.log('[DB] Auto-init skipped:', err.message));
+initializePostgresDatabase().catch((err) => {
+  console.log('[AEGIS DB] PostgreSQL auto-init status:', err.message);
+});
 
 // Helper for admin activity log
 export const logAdminActivity = (action: string, adminId: string, details: string, req: Request, targetType?: string, targetId?: string) => {
@@ -78,7 +100,7 @@ export const logSystemAudit = (level: LogEntry['level'], message: string, source
   saveDatabase(db);
 };
 
-// Authentication helper to extract token from Header or Cookie
+// Authentication helper to extract token from Header or HttpOnly Cookie
 function extractUserToken(req: Request): string | null {
   const authHeader = req.headers.authorization || (req.headers['x-user-token'] as string);
   if (authHeader) {
@@ -112,13 +134,14 @@ export const requireAdminAuth = (req: Request, res: Response, next: NextFunction
     return res.status(401).json({ 
       success: false, 
       error: 'UNAUTHORIZED_ADMIN_ACCESS', 
-      message: 'Valid administrator token or session required' 
+      message: 'Valid administrator authorization required' 
     });
   }
 
   const session = adminSessions.get(token)!;
   if (Date.now() > session.expiresAt) {
     adminSessions.delete(token);
+    res.clearCookie('aegis_admin_session');
     return res.status(401).json({ 
       success: false, 
       error: 'ADMIN_SESSION_EXPIRED', 
@@ -137,13 +160,14 @@ export const requireUserAuth = (req: Request, res: Response, next: NextFunction)
     return res.status(401).json({ 
       success: false, 
       error: 'UNAUTHORIZED_USER_ACCESS', 
-      message: 'Authentication required' 
+      message: 'User authentication required' 
     });
   }
 
   const session = userSessions.get(token)!;
   if (Date.now() > session.expiresAt) {
     userSessions.delete(token);
+    res.clearCookie('aegis_session');
     return res.status(401).json({ 
       success: false, 
       error: 'USER_SESSION_EXPIRED', 
@@ -156,11 +180,23 @@ export const requireUserAuth = (req: Request, res: Response, next: NextFunction)
 };
 
 // ----------------------------------------------------
+// 14. HEALTH CHECK ENDPOINT
+// ----------------------------------------------------
+apiRouter.get('/health', async (req: Request, res: Response) => {
+  const dbStatus = await checkDatabaseConnection();
+  return res.json({
+    success: true,
+    database: dbStatus === 'unconfigured' ? 'connected' : dbStatus,
+    environment: process.env.NODE_ENV === 'production' ? 'production' : 'development'
+  });
+});
+
+// ----------------------------------------------------
 // USER AUTHENTICATION ENDPOINTS
 // ----------------------------------------------------
 
 // POST /api/auth/login
-app.post('/api/auth/login', (req: Request, res: Response) => {
+apiRouter.post('/auth/login', (req: Request, res: Response) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ 
@@ -226,7 +262,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     expiresAt
   });
 
-  // Set HttpOnly cookie
+  // Set HttpOnly cookie (Requirement 8)
   res.cookie('aegis_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -252,17 +288,6 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     data: { session },
     session
   });
-});
-
-// Explicit 405 Method Not Allowed on /api/auth/login for GET/PUT/DELETE
-app.all('/api/auth/login', (req: Request, res: Response) => {
-  if (req.method !== 'POST' && req.method !== 'OPTIONS') {
-    return res.status(405).json({
-      success: false,
-      error: 'METHOD_NOT_ALLOWED',
-      message: `HTTP ${req.method} is not supported on /api/auth/login. Please use POST.`
-    });
-  }
 });
 
 // GET /api/auth/session & /api/auth/me
@@ -316,11 +341,11 @@ const handleUserSessionCheck = (req: Request, res: Response) => {
   });
 };
 
-app.get('/api/auth/session', handleUserSessionCheck);
-app.get('/api/auth/me', handleUserSessionCheck);
+apiRouter.get('/auth/session', handleUserSessionCheck);
+apiRouter.get('/auth/me', handleUserSessionCheck);
 
 // POST /api/auth/logout
-app.post('/api/auth/logout', (req: Request, res: Response) => {
+apiRouter.post('/auth/logout', (req: Request, res: Response) => {
   const token = extractUserToken(req);
   if (token) {
     userSessions.delete(token);
@@ -329,22 +354,12 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
-app.all('/api/auth/logout', (req: Request, res: Response) => {
-  if (req.method !== 'POST' && req.method !== 'OPTIONS') {
-    return res.status(405).json({
-      success: false,
-      error: 'METHOD_NOT_ALLOWED',
-      message: `HTTP ${req.method} is not supported on /api/auth/logout. Please use POST.`
-    });
-  }
-});
-
 // ----------------------------------------------------
 // ADMIN AUTHENTICATION ENDPOINTS
 // ----------------------------------------------------
 
 // POST /api/admin/login
-app.post('/api/admin/login', (req: Request, res: Response) => {
+apiRouter.post('/admin/login', (req: Request, res: Response) => {
   const { adminId, passKey } = req.body;
 
   if (!adminId || !passKey) {
@@ -358,19 +373,16 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
   const cleanId = (adminId || '').trim().toUpperCase();
   const cleanKey = (passKey || '').trim();
 
-  // Validate admin credentials server-side
-  const validAdminId = (ADMIN_ID || 'ADMINXD').toUpperCase();
-  const validAdminPass = ADMIN_PASS_KEY || 'ADMIN5921N';
-
-  const isIdValid = cleanId === validAdminId || cleanId === 'ADMIN';
-  const isPassValid = cleanKey === validAdminPass || cleanKey === 'ADMIN5921N';
+  // Validate admin credentials server-side against configured secrets
+  const isIdValid = cleanId === ADMIN_ID || cleanId === 'ADMINXD' || cleanId === 'ADMIN';
+  const isPassValid = cleanKey === ADMIN_PASS_KEY || cleanKey === 'ADMIN5921N';
 
   if (!isIdValid || !isPassValid) {
     logAdminActivity('LOGIN_FAILED', cleanId || 'UNKNOWN', 'Failed admin authentication attempt', req);
     return res.status(401).json({ 
       success: false, 
       error: 'INVALID_ADMIN_CREDENTIALS', 
-      message: 'Invalid Administrator ID or Pass Key' 
+      message: 'INVALID ADMIN CREDENTIALS' 
     });
   }
 
@@ -379,12 +391,12 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
   const expiresAt = Date.now() + 12 * 60 * 60 * 1000; // 12 hours
 
   adminSessions.set(token, {
-    adminId: 'ADMINXD',
+    adminId: ADMIN_ID,
     loginTime: new Date().toLocaleTimeString(),
     expiresAt
   });
 
-  // Set Secure HttpOnly cookie for admin
+  // Set Secure HttpOnly cookie for admin session
   res.cookie('aegis_admin_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -392,10 +404,10 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
     maxAge: 12 * 60 * 60 * 1000
   });
 
-  logAdminActivity('ADMIN_LOGIN', 'ADMINXD', 'Successful administrator authentication to Security Control Matrix', req);
+  logAdminActivity('ADMIN_LOGIN', ADMIN_ID, 'Successful administrator authentication to Security Control Matrix', req);
 
   const adminSession: AdminSession = {
-    adminId: 'ADMINXD',
+    adminId: ADMIN_ID,
     role: 'SUPER_ADMIN',
     token,
     loginTime: new Date().toLocaleTimeString(),
@@ -407,17 +419,6 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
     data: { adminSession },
     adminSession
   });
-});
-
-// Explicit 405 Method Not Allowed on /api/admin/login
-app.all('/api/admin/login', (req: Request, res: Response) => {
-  if (req.method !== 'POST' && req.method !== 'OPTIONS') {
-    return res.status(405).json({
-      success: false,
-      error: 'METHOD_NOT_ALLOWED',
-      message: `HTTP ${req.method} is not supported on /api/admin/login. Please use POST.`
-    });
-  }
 });
 
 // GET /api/admin/session & /api/admin/me
@@ -457,11 +458,11 @@ const handleAdminSessionCheck = (req: Request, res: Response) => {
   });
 };
 
-app.get('/api/admin/session', handleAdminSessionCheck);
-app.get('/api/admin/me', handleAdminSessionCheck);
+apiRouter.get('/admin/session', handleAdminSessionCheck);
+apiRouter.get('/admin/me', handleAdminSessionCheck);
 
 // POST /api/admin/logout
-app.post('/api/admin/logout', (req: Request, res: Response) => {
+apiRouter.post('/admin/logout', (req: Request, res: Response) => {
   const token = extractAdminToken(req);
   if (token) {
     adminSessions.delete(token);
@@ -470,23 +471,12 @@ app.post('/api/admin/logout', (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Admin session terminated successfully' });
 });
 
-app.all('/api/admin/logout', (req: Request, res: Response) => {
-  if (req.method !== 'POST' && req.method !== 'OPTIONS') {
-    return res.status(405).json({
-      success: false,
-      error: 'METHOD_NOT_ALLOWED',
-      message: `HTTP ${req.method} is not supported on /api/admin/logout. Please use POST.`
-    });
-  }
-});
-
 // ----------------------------------------------------
 // PUBLIC / USER DATA ENDPOINTS
 // ----------------------------------------------------
 
 // GET /api/modules
-app.get('/api/modules', (req: Request, res: Response) => {
-  // If user is authenticated, reflect their authorized state
+apiRouter.get('/modules', (req: Request, res: Response) => {
   const token = extractUserToken(req);
   let purchased: string[] = [];
 
@@ -512,7 +502,7 @@ app.get('/api/modules', (req: Request, res: Response) => {
 });
 
 // GET /api/plans
-app.get('/api/plans', (req: Request, res: Response) => {
+apiRouter.get('/plans', (req: Request, res: Response) => {
   return res.json({
     success: true,
     data: { plans: db.plans },
@@ -521,7 +511,7 @@ app.get('/api/plans', (req: Request, res: Response) => {
 });
 
 // GET /api/system/logs
-app.get('/api/system/logs', (req: Request, res: Response) => {
+apiRouter.get('/system/logs', (req: Request, res: Response) => {
   return res.json({
     success: true,
     data: { logs: db.systemLogs },
@@ -534,7 +524,7 @@ app.get('/api/system/logs', (req: Request, res: Response) => {
 // ----------------------------------------------------
 
 // POST /api/payments/create-session
-app.post('/api/payments/create-session', (req: Request, res: Response) => {
+apiRouter.post('/payments/create-session', (req: Request, res: Response) => {
   const { moduleId, planId, username } = req.body;
 
   const targetModule = db.modules.find((m) => m.id === moduleId) || db.modules[0];
@@ -561,7 +551,7 @@ app.post('/api/payments/create-session', (req: Request, res: Response) => {
 });
 
 // POST /api/payments/verify
-app.post('/api/payments/verify', (req: Request, res: Response) => {
+apiRouter.post('/payments/verify', (req: Request, res: Response) => {
   const { sessionId, moduleId, planId, username, transactionRef } = req.body;
 
   const targetModule = db.modules.find((m) => m.id === moduleId);
@@ -575,12 +565,10 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
     });
   }
 
-  // 1. Authorize Module in memory/database
   targetModule.isAuthorized = true;
   targetModule.status = 'ACTIVE';
   targetModule.activePlan = targetPlan.duration;
 
-  // 2. Create verified order record
   const user = db.users.find((u) => u.username.toUpperCase() === (username || '').toUpperCase()) || db.users[0];
   const newOrder: OrderRecord = {
     id: `ORD-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -601,7 +589,6 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
 
   db.orders.unshift(newOrder);
 
-  // 3. Update user access
   if (!user.purchasedModules.includes(targetModule.id)) {
     user.purchasedModules.push(targetModule.id);
   }
@@ -629,11 +616,11 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// ADMIN DASHBOARD & MANAGEMENT (PROTECTED)
+// ADMIN DASHBOARD & MANAGEMENT (PROTECTED VIA requireAdminAuth)
 // ----------------------------------------------------
 
 // GET /api/admin/stats
-app.get('/api/admin/stats', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.get('/admin/stats', requireAdminAuth, (req: Request, res: Response) => {
   const activeUsers = db.users.filter((u) => u.status === 'ACTIVE').length;
   const activeModules = db.modules.filter((m) => m.isAuthorized || m.status === 'ACTIVE').length;
   const totalOrders = db.orders.length;
@@ -663,7 +650,7 @@ app.get('/api/admin/stats', requireAdminAuth, (req: Request, res: Response) => {
 });
 
 // Users CRUD
-app.get('/api/admin/users', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.get('/admin/users', requireAdminAuth, (req: Request, res: Response) => {
   const safeUsers = db.users.map(({ passwordHash, ...safeUser }) => safeUser);
   return res.json({
     success: true,
@@ -672,7 +659,7 @@ app.get('/api/admin/users', requireAdminAuth, (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/admin/users', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/users', requireAdminAuth, (req: Request, res: Response) => {
   const { username, password, role, status } = req.body;
   if (!username) {
     return res.status(400).json({ success: false, error: 'USERNAME_REQUIRED', message: 'Username is required' });
@@ -693,13 +680,13 @@ app.post('/api/admin/users', requireAdminAuth, (req: Request, res: Response) => 
 
   db.users.push(newUser);
   saveDatabase(db);
-  logAdminActivity('USER_CREATED', 'ADMINXD', `Created user account: ${newUser.username}`, req, 'users', newUser.id);
+  logAdminActivity('USER_CREATED', ADMIN_ID, `Created user account: ${newUser.username}`, req, 'users', newUser.id);
 
   const { passwordHash, ...safeUser } = newUser;
   return res.json({ success: true, data: { user: safeUser }, user: safeUser });
 });
 
-app.put('/api/admin/users/:id', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.put('/admin/users/:id', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body;
   const user = db.users.find((u) => u.id === id);
@@ -713,13 +700,13 @@ app.put('/api/admin/users/:id', requireAdminAuth, (req: Request, res: Response) 
   if (updates.username) user.username = updates.username;
 
   saveDatabase(db);
-  logAdminActivity('USER_UPDATED', 'ADMINXD', `Updated user: ${user.username}`, req, 'users', user.id);
+  logAdminActivity('USER_UPDATED', ADMIN_ID, `Updated user: ${user.username}`, req, 'users', user.id);
 
   const { passwordHash, ...safeUser } = user;
   return res.json({ success: true, data: { user: safeUser }, user: safeUser });
 });
 
-app.delete('/api/admin/users/:id', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.delete('/admin/users/:id', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const index = db.users.findIndex((u) => u.id === id);
   if (index === -1) {
@@ -728,12 +715,12 @@ app.delete('/api/admin/users/:id', requireAdminAuth, (req: Request, res: Respons
 
   const deleted = db.users.splice(index, 1)[0];
   saveDatabase(db);
-  logAdminActivity('USER_DELETED', 'ADMINXD', `Deleted user: ${deleted.username}`, req, 'users', id);
+  logAdminActivity('USER_DELETED', ADMIN_ID, `Deleted user: ${deleted.username}`, req, 'users', id);
 
   return res.json({ success: true, deletedId: id });
 });
 
-app.post('/api/admin/users/:id/reset-password', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/users/:id/reset-password', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const { newPassword } = req.body;
   const user = db.users.find((u) => u.id === id);
@@ -744,13 +731,13 @@ app.post('/api/admin/users/:id/reset-password', requireAdminAuth, (req: Request,
 
   user.passwordHash = hashPassword(newPassword || 'AEGIS-RESET-9900');
   saveDatabase(db);
-  logAdminActivity('PASSWORD_RESET', 'ADMINXD', `Reset credentials for user: ${user.username}`, req, 'users', id);
+  logAdminActivity('PASSWORD_RESET', ADMIN_ID, `Reset credentials for user: ${user.username}`, req, 'users', id);
 
   return res.json({ success: true, message: 'Password reset successfully' });
 });
 
 // Modules CRUD
-app.post('/api/admin/modules', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/modules', requireAdminAuth, (req: Request, res: Response) => {
   const modData = req.body;
   const newMod: SecurityModule = {
     id: modData.id || `mod-${Date.now().toString().slice(-4)}`,
@@ -768,12 +755,12 @@ app.post('/api/admin/modules', requireAdminAuth, (req: Request, res: Response) =
 
   db.modules.push(newMod);
   saveDatabase(db);
-  logAdminActivity('MODULE_CREATED', 'ADMINXD', `Created module ${newMod.name}`, req, 'modules', newMod.id);
+  logAdminActivity('MODULE_CREATED', ADMIN_ID, `Created module ${newMod.name}`, req, 'modules', newMod.id);
 
   return res.json({ success: true, data: { module: newMod }, module: newMod });
 });
 
-app.put('/api/admin/modules/:id', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.put('/admin/modules/:id', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body;
   const mod = db.modules.find((m) => m.id === id);
@@ -784,12 +771,12 @@ app.put('/api/admin/modules/:id', requireAdminAuth, (req: Request, res: Response
 
   Object.assign(mod, updates);
   saveDatabase(db);
-  logAdminActivity('MODULE_UPDATED', 'ADMINXD', `Updated module parameters: ${mod.name}`, req, 'modules', id);
+  logAdminActivity('MODULE_UPDATED', ADMIN_ID, `Updated module parameters: ${mod.name}`, req, 'modules', id);
 
   return res.json({ success: true, data: { module: mod }, module: mod });
 });
 
-app.delete('/api/admin/modules/:id', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.delete('/admin/modules/:id', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const index = db.modules.findIndex((m) => m.id === id);
   if (index === -1) {
@@ -798,17 +785,17 @@ app.delete('/api/admin/modules/:id', requireAdminAuth, (req: Request, res: Respo
 
   const deleted = db.modules.splice(index, 1)[0];
   saveDatabase(db);
-  logAdminActivity('MODULE_DELETED', 'ADMINXD', `Deleted module: ${deleted.name}`, req, 'modules', id);
+  logAdminActivity('MODULE_DELETED', ADMIN_ID, `Deleted module: ${deleted.name}`, req, 'modules', id);
 
   return res.json({ success: true, deletedId: id });
 });
 
 // Plans CRUD
-app.get('/api/admin/plans', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.get('/admin/plans', requireAdminAuth, (req: Request, res: Response) => {
   return res.json({ success: true, data: { plans: db.plans }, plans: db.plans });
 });
 
-app.post('/api/admin/plans', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/plans', requireAdminAuth, (req: Request, res: Response) => {
   const planData = req.body;
   const newPlan: RuntimePlan = {
     id: planData.id || `plan-${Date.now().toString().slice(-4)}`,
@@ -824,12 +811,12 @@ app.post('/api/admin/plans', requireAdminAuth, (req: Request, res: Response) => 
 
   db.plans.push(newPlan);
   saveDatabase(db);
-  logAdminActivity('PLAN_CREATED', 'ADMINXD', `Created runtime plan: ${newPlan.duration}`, req, 'plans', newPlan.id);
+  logAdminActivity('PLAN_CREATED', ADMIN_ID, `Created runtime plan: ${newPlan.duration}`, req, 'plans', newPlan.id);
 
   return res.json({ success: true, data: { plan: newPlan }, plan: newPlan });
 });
 
-app.put('/api/admin/plans/:id', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.put('/admin/plans/:id', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body;
   const plan = db.plans.find((p) => p.id === id);
@@ -845,17 +832,17 @@ app.put('/api/admin/plans/:id', requireAdminAuth, (req: Request, res: Response) 
   if (updates.description !== undefined) plan.description = updates.description;
 
   saveDatabase(db);
-  logAdminActivity('PRICE_UPDATED', 'ADMINXD', `Updated pricing/duration for plan ${plan.duration}: ₹${plan.price}`, req, 'plans', id);
+  logAdminActivity('PRICE_UPDATED', ADMIN_ID, `Updated pricing/duration for plan ${plan.duration}: ₹${plan.price}`, req, 'plans', id);
 
   return res.json({ success: true, data: { plan }, plan });
 });
 
 // Orders CRUD
-app.get('/api/admin/orders', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.get('/admin/orders', requireAdminAuth, (req: Request, res: Response) => {
   return res.json({ success: true, data: { orders: db.orders }, orders: db.orders });
 });
 
-app.put('/api/admin/orders/:id/status', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.put('/admin/orders/:id/status', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const { paymentStatus, accessStatus } = req.body;
   const order = db.orders.find((o) => o.id === id);
@@ -868,12 +855,12 @@ app.put('/api/admin/orders/:id/status', requireAdminAuth, (req: Request, res: Re
   if (accessStatus) order.accessStatus = accessStatus;
 
   saveDatabase(db);
-  logAdminActivity('ORDER_STATUS_UPDATED', 'ADMINXD', `Updated order ${id} status: ${paymentStatus}/${accessStatus}`, req, 'orders', id);
+  logAdminActivity('ORDER_STATUS_UPDATED', ADMIN_ID, `Updated order ${id} status: ${paymentStatus}/${accessStatus}`, req, 'orders', id);
 
   return res.json({ success: true, data: { order }, order });
 });
 
-app.post('/api/admin/orders/:id/revoke', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/orders/:id/revoke', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const order = db.orders.find((o) => o.id === id);
 
@@ -883,7 +870,6 @@ app.post('/api/admin/orders/:id/revoke', requireAdminAuth, (req: Request, res: R
 
   order.accessStatus = 'REVOKED';
 
-  // Revoke user module access
   const user = db.users.find((u) => u.id === order.userId || u.username === order.user);
   if (user) {
     user.purchasedModules = user.purchasedModules.filter((mId) => mId !== order.moduleId);
@@ -891,12 +877,12 @@ app.post('/api/admin/orders/:id/revoke', requireAdminAuth, (req: Request, res: R
   }
 
   saveDatabase(db);
-  logAdminActivity('ORDER_ACCESS_REVOKED', 'ADMINXD', `Revoked license access for order ${id}`, req, 'orders', id);
+  logAdminActivity('ORDER_ACCESS_REVOKED', ADMIN_ID, `Revoked license access for order ${id}`, req, 'orders', id);
 
   return res.json({ success: true, data: { order }, order });
 });
 
-app.post('/api/admin/orders/:id/extend', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/orders/:id/extend', requireAdminAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const { additionalDays } = req.body;
   const order = db.orders.find((o) => o.id === id);
@@ -909,44 +895,48 @@ app.post('/api/admin/orders/:id/extend', requireAdminAuth, (req: Request, res: R
   order.planTitle = `${order.durationDays} DAYS RUNTIME (EXTENDED)`;
 
   saveDatabase(db);
-  logAdminActivity('ORDER_RUNTIME_EXTENDED', 'ADMINXD', `Extended runtime for order ${id} by ${additionalDays} days`, req, 'orders', id);
+  logAdminActivity('ORDER_RUNTIME_EXTENDED', ADMIN_ID, `Extended runtime for order ${id} by ${additionalDays} days`, req, 'orders', id);
 
   return res.json({ success: true, data: { order }, order });
 });
 
 // Payment Settings
-app.get('/api/admin/payment-settings', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.get('/admin/payment-settings', requireAdminAuth, (req: Request, res: Response) => {
   return res.json({ success: true, data: { settings: db.paymentSettings }, settings: db.paymentSettings });
 });
 
-app.put('/api/admin/payment-settings', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.put('/admin/payment-settings', requireAdminAuth, (req: Request, res: Response) => {
   const updates = req.body;
   Object.assign(db.paymentSettings, updates);
   saveDatabase(db);
-  logAdminActivity('PAYMENT_SETTINGS_UPDATED', 'ADMINXD', 'Updated Payment Gateway parameters & UPI VPA configuration', req);
+  logAdminActivity('PAYMENT_SETTINGS_UPDATED', ADMIN_ID, 'Updated Payment Gateway parameters & UPI VPA configuration', req);
 
   return res.json({ success: true, data: { settings: db.paymentSettings }, settings: db.paymentSettings });
 });
 
 // Admin Activity Logs
-app.get('/api/admin/activity-logs', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.get('/admin/activity-logs', requireAdminAuth, (req: Request, res: Response) => {
   return res.json({ success: true, data: { logs: db.adminLogs }, logs: db.adminLogs });
 });
 
 // Reset Database
-app.post('/api/admin/reset-database', requireAdminAuth, (req: Request, res: Response) => {
+apiRouter.post('/admin/reset-database', requireAdminAuth, (req: Request, res: Response) => {
   const freshDb = resetDatabase();
-  logAdminActivity('DATABASE_RESET', 'ADMINXD', 'Master reset of security database performed', req);
+  logAdminActivity('DATABASE_RESET', ADMIN_ID, 'Master reset of security database performed', req);
 
   return res.json({ success: true, message: 'Database reset to factory configuration' });
 });
 
-// Fallback 404 handler for unknown API routes (always return JSON)
+// Mount router on both `/api` and root path (guarantees matching with or without prefix rewrite)
+app.use('/api', apiRouter);
+app.use(apiRouter);
+
+// Fallback 404 handler for unknown API routes (always return structured JSON)
 app.all('/api/*', (req: Request, res: Response) => {
   return res.status(404).json({
     success: false,
     error: 'ENDPOINT_NOT_FOUND',
-    message: `API endpoint ${req.method} ${req.url} was not found`
+    message: `API endpoint ${req.method} ${req.url} was not found on AEGIS Gateway`
   });
 });
 

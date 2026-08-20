@@ -4,34 +4,6 @@ import {
   AdminStats, LogEntry 
 } from '../types';
 
-const USER_TOKEN_KEY = 'aegis_user_token';
-const ADMIN_TOKEN_KEY = 'aegis_admin_token';
-
-// Token helper functions
-export const getStoredUserToken = (): string | null => {
-  try { return localStorage.getItem(USER_TOKEN_KEY); } catch { return null; }
-};
-
-export const setStoredUserToken = (token: string) => {
-  try { localStorage.setItem(USER_TOKEN_KEY, token); } catch {}
-};
-
-export const clearStoredUserToken = () => {
-  try { localStorage.removeItem(USER_TOKEN_KEY); } catch {}
-};
-
-export const getStoredAdminToken = (): string | null => {
-  try { return localStorage.getItem(ADMIN_TOKEN_KEY); } catch { return null; }
-};
-
-export const setStoredAdminToken = (token: string) => {
-  try { localStorage.setItem(ADMIN_TOKEN_KEY, token); } catch {}
-};
-
-export const clearStoredAdminToken = () => {
-  try { localStorage.removeItem(ADMIN_TOKEN_KEY); } catch {}
-};
-
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
@@ -54,11 +26,10 @@ export class ApiError extends Error {
   }
 }
 
-// Request helper targeting the unified production API
+// Request helper targeting the same-origin production API with HttpOnly cookie credentials
 async function apiRequest<T>(
   endpoint: string, 
-  options: RequestInit = {}, 
-  authType: 'user' | 'admin' | 'none' = 'none'
+  options: RequestInit = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -66,20 +37,12 @@ async function apiRequest<T>(
     ...(options.headers as Record<string, string> || {})
   };
 
-  if (authType === 'user') {
-    const token = getStoredUserToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-  } else if (authType === 'admin') {
-    const token = getStoredAdminToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-  }
-
   let response: Response;
   try {
     response = await fetch(endpoint, {
       ...options,
       headers,
-      credentials: 'include' // Send and receive HttpOnly cookies
+      credentials: 'include' // Transmit and receive HttpOnly session cookies automatically
     });
   } catch (netErr: any) {
     throw new ApiError(
@@ -102,7 +65,6 @@ async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    // Specific HTTP status message mapping
     let defaultMsg = `Request failed with status ${response.status}`;
     let errorCode = responseData?.error || 'HTTP_ERROR';
 
@@ -143,6 +105,14 @@ async function apiRequest<T>(
 }
 
 export const api = {
+  // 14. HEALTH CHECK
+  async getHealth(): Promise<{ success: boolean; database: string; environment: string }> {
+    return await apiRequest<{ success: boolean; database: string; environment: string }>(
+      '/api/health',
+      { method: 'GET' }
+    );
+  },
+
   // USER AUTH
   async loginUser(username: string, passKey: string): Promise<{ session: UserSession }> {
     const res = await apiRequest<{ success: boolean; data?: { session: UserSession }; session?: UserSession }>(
@@ -157,10 +127,6 @@ export const api = {
     if (!session) {
       throw new ApiError('Invalid response payload received from authentication gateway', 500);
     }
-
-    if (session.token) {
-      setStoredUserToken(session.token);
-    }
     return { session };
   },
 
@@ -168,24 +134,19 @@ export const api = {
     try {
       const res = await apiRequest<{ success: boolean; data?: { session: UserSession }; session?: UserSession }>(
         '/api/auth/session', 
-        { method: 'GET' }, 
-        'user'
+        { method: 'GET' }
       );
       const session = res.data?.session || res.session || null;
       return { session };
-    } catch (err: any) {
-      if (err.status === 401 || err.status === 403) {
-        clearStoredUserToken();
-      }
+    } catch {
       return { session: null };
     }
   },
 
   async logoutUser(): Promise<void> {
     try {
-      await apiRequest('/api/auth/logout', { method: 'POST' }, 'user');
+      await apiRequest('/api/auth/logout', { method: 'POST' });
     } catch {}
-    clearStoredUserToken();
   },
 
   // ADMIN AUTH
@@ -200,11 +161,7 @@ export const api = {
 
     const adminSession = res.data?.adminSession || res.adminSession;
     if (!adminSession) {
-      throw new ApiError('Invalid response received from Administrator Gateway', 500);
-    }
-
-    if (adminSession.token) {
-      setStoredAdminToken(adminSession.token);
+      throw new ApiError('INVALID ADMIN CREDENTIALS', 401);
     }
     return { adminSession };
   },
@@ -213,32 +170,26 @@ export const api = {
     try {
       const res = await apiRequest<{ success: boolean; data?: { adminSession: AdminSession }; adminSession?: AdminSession }>(
         '/api/admin/session', 
-        { method: 'GET' }, 
-        'admin'
+        { method: 'GET' }
       );
       const adminSession = res.data?.adminSession || res.adminSession || null;
       return { adminSession };
-    } catch (err: any) {
-      if (err.status === 401 || err.status === 403) {
-        clearStoredAdminToken();
-      }
+    } catch {
       return { adminSession: null };
     }
   },
 
   async logoutAdmin(): Promise<void> {
     try {
-      await apiRequest('/api/admin/logout', { method: 'POST' }, 'admin');
+      await apiRequest('/api/admin/logout', { method: 'POST' });
     } catch {}
-    clearStoredAdminToken();
   },
 
   // MODULES & PLANS
   async getModules(): Promise<{ modules: SecurityModule[] }> {
     const res = await apiRequest<{ success: boolean; data?: { modules: SecurityModule[] }; modules?: SecurityModule[] }>(
       '/api/modules',
-      { method: 'GET' },
-      'user'
+      { method: 'GET' }
     );
     return { modules: res.data?.modules || res.modules || [] };
   },
@@ -301,8 +252,7 @@ export const api = {
   async getAdminStats(): Promise<{ stats: AdminStats }> {
     const res = await apiRequest<{ success: boolean; data?: { stats: AdminStats }; stats?: AdminStats }>(
       '/api/admin/stats', 
-      { method: 'GET' }, 
-      'admin'
+      { method: 'GET' }
     );
     return { stats: res.data?.stats || res.stats! };
   },
@@ -311,8 +261,7 @@ export const api = {
   async getAdminUsers(): Promise<{ users: UserRecord[] }> {
     const res = await apiRequest<{ success: boolean; data?: { users: UserRecord[] }; users?: UserRecord[] }>(
       '/api/admin/users', 
-      { method: 'GET' }, 
-      'admin'
+      { method: 'GET' }
     );
     return { users: res.data?.users || res.users || [] };
   },
@@ -323,8 +272,7 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify(user)
-      }, 
-      'admin'
+      }
     );
     return { success: true, user: res.data?.user || res.user! };
   },
@@ -335,8 +283,7 @@ export const api = {
       {
         method: 'PUT',
         body: JSON.stringify(updates)
-      }, 
-      'admin'
+      }
     );
     return { success: true, user: res.data?.user || res.user! };
   },
@@ -344,8 +291,7 @@ export const api = {
   async deleteAdminUser(id: string) {
     const res = await apiRequest<{ success: boolean; deletedId?: string }>(
       `/api/admin/users/${id}`, 
-      { method: 'DELETE' }, 
-      'admin'
+      { method: 'DELETE' }
     );
     return { success: true, deletedId: res.deletedId || id };
   },
@@ -356,8 +302,7 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ newPassword })
-      }, 
-      'admin'
+      }
     );
     return { success: true, message: res.message || 'Password reset successfully' };
   },
@@ -369,8 +314,7 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify(mod)
-      }, 
-      'admin'
+      }
     );
     return { success: true, module: res.data?.module || res.module! };
   },
@@ -381,8 +325,7 @@ export const api = {
       {
         method: 'PUT',
         body: JSON.stringify(updates)
-      }, 
-      'admin'
+      }
     );
     return { success: true, module: res.data?.module || res.module! };
   },
@@ -390,8 +333,7 @@ export const api = {
   async deleteAdminModule(id: string) {
     const res = await apiRequest<{ success: boolean; deletedId?: string }>(
       `/api/admin/modules/${id}`, 
-      { method: 'DELETE' }, 
-      'admin'
+      { method: 'DELETE' }
     );
     return { success: true, deletedId: res.deletedId || id };
   },
@@ -400,8 +342,7 @@ export const api = {
   async getAdminPlans(): Promise<{ plans: RuntimePlan[] }> {
     const res = await apiRequest<{ success: boolean; data?: { plans: RuntimePlan[] }; plans?: RuntimePlan[] }>(
       '/api/admin/plans', 
-      { method: 'GET' }, 
-      'admin'
+      { method: 'GET' }
     );
     return { plans: res.data?.plans || res.plans || [] };
   },
@@ -412,8 +353,7 @@ export const api = {
       {
         method: 'PUT',
         body: JSON.stringify(updates)
-      }, 
-      'admin'
+      }
     );
     return { success: true, plan: res.data?.plan || res.plan! };
   },
@@ -424,8 +364,7 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify(plan)
-      }, 
-      'admin'
+      }
     );
     return { success: true, plan: res.data?.plan || res.plan! };
   },
@@ -434,8 +373,7 @@ export const api = {
   async getAdminOrders(): Promise<{ orders: OrderRecord[] }> {
     const res = await apiRequest<{ success: boolean; data?: { orders: OrderRecord[] }; orders?: OrderRecord[] }>(
       '/api/admin/orders', 
-      { method: 'GET' }, 
-      'admin'
+      { method: 'GET' }
     );
     return { orders: res.data?.orders || res.orders || [] };
   },
@@ -446,8 +384,7 @@ export const api = {
       {
         method: 'PUT',
         body: JSON.stringify({ paymentStatus, accessStatus })
-      }, 
-      'admin'
+      }
     );
     return { success: true, order: res.data?.order || res.order! };
   },
@@ -455,8 +392,7 @@ export const api = {
   async revokeAdminOrderAccess(id: string) {
     const res = await apiRequest<{ success: boolean; data?: { order: OrderRecord }; order?: OrderRecord }>(
       `/api/admin/orders/${id}/revoke`, 
-      { method: 'POST' }, 
-      'admin'
+      { method: 'POST' }
     );
     return { success: true, order: res.data?.order || res.order! };
   },
@@ -467,8 +403,7 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ additionalDays })
-      }, 
-      'admin'
+      }
     );
     return { success: true, order: res.data?.order || res.order! };
   },
@@ -477,8 +412,7 @@ export const api = {
   async getAdminPaymentSettings(): Promise<{ settings: PaymentSettings }> {
     const res = await apiRequest<{ success: boolean; data?: { settings: PaymentSettings }; settings?: PaymentSettings }>(
       '/api/admin/payment-settings', 
-      { method: 'GET' }, 
-      'admin'
+      { method: 'GET' }
     );
     return { settings: res.data?.settings || res.settings! };
   },
@@ -489,8 +423,7 @@ export const api = {
       {
         method: 'PUT',
         body: JSON.stringify(settings)
-      }, 
-      'admin'
+      }
     );
     return { success: true, settings: res.data?.settings || res.settings! };
   },
@@ -499,8 +432,7 @@ export const api = {
   async getAdminActivityLogs(): Promise<{ logs: AdminActivityLog[] }> {
     const res = await apiRequest<{ success: boolean; data?: { logs: AdminActivityLog[] }; logs?: AdminActivityLog[] }>(
       '/api/admin/activity-logs', 
-      { method: 'GET' }, 
-      'admin'
+      { method: 'GET' }
     );
     return { logs: res.data?.logs || res.logs || [] };
   },
@@ -509,8 +441,7 @@ export const api = {
   async resetDatabase() {
     return await apiRequest<{ success: boolean; message: string }>(
       '/api/admin/reset-database', 
-      { method: 'POST' }, 
-      'admin'
+      { method: 'POST' }
     );
   }
 };

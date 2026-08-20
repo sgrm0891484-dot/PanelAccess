@@ -13,14 +13,18 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'aegis-quantum-auth-secret-key-20
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
 
-// Helper to hash password with salt
+// Cryptographic password hashing
 export function hashPassword(password: string): string {
   return crypto.createHmac('sha256', AUTH_SECRET).update(password.trim()).digest('hex');
 }
 
 export function verifyPassword(password: string, hash: string): boolean {
-  const calculated = hashPassword(password);
-  return crypto.timingSafeEqual(Buffer.from(calculated), Buffer.from(hash));
+  try {
+    const calculated = hashPassword(password);
+    return crypto.timingSafeEqual(Buffer.from(calculated), Buffer.from(hash));
+  } catch {
+    return false;
+  }
 }
 
 // ----------------------------------------------------
@@ -348,28 +352,51 @@ export interface DatabaseSchema {
 let dbInstance: DatabaseSchema | null = null;
 let pgPool: pg.Pool | null = null;
 
-// Initialize PostgreSQL Pool if DATABASE_URL is available
+// Reusable PostgreSQL Pool with reconnection and error handling
 export function getPgPool(): pg.Pool | null {
   const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
   if (!dbUrl) return null;
 
   if (!pgPool) {
-    pgPool = new Pool({
-      connectionString: dbUrl,
-      ssl: process.env.NODE_ENV === 'production' || dbUrl.includes('supabase') 
-        ? { rejectUnauthorized: false } 
-        : undefined,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
+    try {
+      pgPool = new Pool({
+        connectionString: dbUrl,
+        ssl: process.env.NODE_ENV === 'production' || dbUrl.includes('supabase') 
+          ? { rejectUnauthorized: false } 
+          : undefined,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 8000,
+      });
 
-    pgPool.on('error', (err) => {
-      console.error('[PostgreSQL] Unexpected pool error:', err);
-    });
+      pgPool.on('error', (err) => {
+        console.error('[PostgreSQL] Unexpected pool client error:', err.message);
+      });
+    } catch (err: any) {
+      console.error('[PostgreSQL] Pool creation failed:', err.message);
+      pgPool = null;
+    }
   }
 
   return pgPool;
+}
+
+// Check database connection status for /api/health
+export async function checkDatabaseConnection(): Promise<'connected' | 'fallback_storage' | 'unconfigured'> {
+  const pool = getPgPool();
+  if (!pool) {
+    return 'fallback_storage';
+  }
+  try {
+    const result = await pool.query('SELECT 1 as alive');
+    if (result && result.rows && result.rows.length > 0) {
+      return 'connected';
+    }
+    return 'connected';
+  } catch (err: any) {
+    console.error('[PostgreSQL] Health check query error:', err.message);
+    return 'fallback_storage';
+  }
 }
 
 // Auto-run schema migration on Postgres if connected
@@ -380,19 +407,126 @@ export async function initializePostgresDatabase(): Promise<boolean> {
   try {
     const client = await pool.connect();
     try {
-      console.log('[PostgreSQL] Connected. Verifying database schema...');
-      const schemaSqlPath = path.join(__dirname, 'schema.sql');
-      if (fs.existsSync(schemaSqlPath)) {
-        const sql = fs.readFileSync(schemaSqlPath, 'utf-8');
+      console.log('[PostgreSQL] Connected to production database. Verifying schema...');
+      
+      const possibleSchemaPaths = [
+        path.join(process.cwd(), 'schema.sql'),
+        path.join(__dirname, 'schema.sql'),
+        path.join(__dirname, '../schema.sql')
+      ];
+
+      let sql = '';
+      for (const p of possibleSchemaPaths) {
+        if (fs.existsSync(p)) {
+          sql = fs.readFileSync(p, 'utf-8');
+          break;
+        }
+      }
+
+      if (sql) {
         await client.query(sql);
         console.log('[PostgreSQL] Schema migration checked and up to date.');
+      } else {
+        // Fallback inline table creation
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS users (
+            id VARCHAR(64) PRIMARY KEY,
+            username VARCHAR(64) UNIQUE NOT NULL,
+            email VARCHAR(128),
+            password_hash VARCHAR(256) NOT NULL,
+            role VARCHAR(32) DEFAULT 'AGENT',
+            status VARCHAR(32) DEFAULT 'ACTIVE',
+            ip_hash VARCHAR(64),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP WITH TIME ZONE
+          );
+          CREATE TABLE IF NOT EXISTS admin_users (
+            id VARCHAR(64) PRIMARY KEY,
+            username VARCHAR(64) UNIQUE NOT NULL,
+            password_hash VARCHAR(256) NOT NULL,
+            role VARCHAR(32) DEFAULT 'SUPER_ADMIN',
+            status VARCHAR(32) DEFAULT 'ACTIVE',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP WITH TIME ZONE
+          );
+          CREATE TABLE IF NOT EXISTS modules (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(128) NOT NULL,
+            version VARCHAR(32) NOT NULL,
+            subtitle TEXT,
+            description TEXT,
+            icon VARCHAR(64) DEFAULT 'shield',
+            features JSONB DEFAULT '[]'::jsonb,
+            tags JSONB DEFAULT '[]'::jsonb,
+            base_price NUMERIC(10, 2) DEFAULT 150.00,
+            status VARCHAR(32) DEFAULT 'LOCKED',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS runtime_plans (
+            id VARCHAR(64) PRIMARY KEY,
+            module_id VARCHAR(64),
+            name VARCHAR(128) NOT NULL,
+            duration_days INTEGER NOT NULL,
+            price NUMERIC(10, 2) NOT NULL,
+            currency VARCHAR(16) DEFAULT '₹',
+            badge VARCHAR(64),
+            description TEXT,
+            features JSONB DEFAULT '[]'::jsonb,
+            recommended BOOLEAN DEFAULT false,
+            status VARCHAR(32) DEFAULT 'ACTIVE',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS orders (
+            id VARCHAR(64) PRIMARY KEY,
+            user_id VARCHAR(64),
+            username VARCHAR(64),
+            module_id VARCHAR(64),
+            module_name VARCHAR(128),
+            runtime_plan_id VARCHAR(64),
+            plan_title VARCHAR(128),
+            duration_days INTEGER,
+            amount NUMERIC(10, 2) NOT NULL,
+            payment_status VARCHAR(32) DEFAULT 'PENDING',
+            access_status VARCHAR(32) DEFAULT 'INACTIVE',
+            payment_reference VARCHAR(128),
+            method VARCHAR(64) DEFAULT 'UPI QR GATEWAY',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS user_access (
+            id VARCHAR(64) PRIMARY KEY,
+            user_id VARCHAR(64),
+            module_id VARCHAR(64),
+            order_id VARCHAR(64),
+            plan_title VARCHAR(128),
+            starts_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP WITH TIME ZONE,
+            status VARCHAR(32) DEFAULT 'ACTIVE',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS admin_activity_logs (
+            id VARCHAR(64) PRIMARY KEY,
+            admin_id VARCHAR(64) NOT NULL,
+            action VARCHAR(64) NOT NULL,
+            target_type VARCHAR(64),
+            target_id VARCHAR(64),
+            details TEXT,
+            ip_hash VARCHAR(64),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
       }
       return true;
     } finally {
       client.release();
     }
-  } catch (err) {
-    console.error('[PostgreSQL] Initialization error (falling back to storage):', err);
+  } catch (err: any) {
+    console.error('[PostgreSQL] Initialization error:', err.message);
     return false;
   }
 }
