@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   RoutePath, UserSession, SecurityModule, RuntimePlan, 
   PaymentSession, OrderRecord, LogEntry, ToastMessage, AdminSession 
 } from './types';
 import { api } from './services/api';
+import { appStore } from './store/appStore';
 import { getAudioEnabled, setAudioEnabled, playCyberClick, playSuccessSound, playAlertSound } from './utils/audio';
 
 import { Header } from './components/Header';
@@ -74,51 +75,43 @@ export default function App() {
     setAudioEnabled(next);
   };
 
-  // Load Initial Server Data & Restore Valid Sessions
-  const loadInitialData = async () => {
+  // Load Initial Store Data & Restore Valid Sessions
+  const loadInitialData = useCallback(async () => {
     try {
-      // 1. Fetch public modules & plans & logs from backend
       const [modRes, plansRes, logsRes] = await Promise.all([
-        api.getModules().catch(() => ({ modules: [] })),
-        api.getPlans().catch(() => ({ plans: [] })),
-        api.getSystemLogs().catch(() => ({ logs: [] }))
+        api.getModules(),
+        api.getPlans(),
+        api.getSystemLogs()
       ]);
 
       if (modRes.modules) setModules(modRes.modules);
       if (plansRes.plans) setPlans(plansRes.plans);
       if (logsRes.logs) setLogs(logsRes.logs);
 
-      // 2. Check for active admin session
+      // Check active admin session
       const adminRes = await api.getCurrentAdmin();
-      if (adminRes && adminRes.adminSession) {
-        setAdminSession(adminRes.adminSession);
-      } else {
-        setAdminSession(null);
-      }
+      setAdminSession(adminRes?.adminSession || null);
 
-      // 3. Check for active user session
+      // Check active user session
       const userRes = await api.getCurrentUser();
       if (userRes && userRes.session) {
         setSession(userRes.session);
-        // Only if valid session exists on refresh and currently at root, route to panel
-        if (window.location.pathname === '/panel' || currentPath === '/panel') {
-          setCurrentPath('/panel');
-        }
       } else {
         setSession(null);
-        // If not logged in, ensure we are on root / login screen
-        if (currentPath !== '/admin') {
-          setCurrentPath('/');
-        }
       }
     } catch (err) {
-      console.error('Error loading initial data:', err);
+      console.error('Error loading initial store data:', err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadInitialData();
-  }, []);
+    // Subscribe to central appStore updates
+    const unsubscribe = appStore.subscribe(() => {
+      loadInitialData();
+    });
+    return () => unsubscribe();
+  }, [loadInitialData]);
 
   // Login handler
   const handleLoginSuccess = (newSession: UserSession) => {

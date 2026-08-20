@@ -1,8 +1,15 @@
+/**
+ * AEGIS // DEFENSE - Pure Frontend Service Layer
+ * Fully decoupled from backend APIs, databases, and serverless functions.
+ * All operations execute locally in the client and persist in browser storage.
+ */
+
 import { 
   UserSession, AdminSession, UserRecord, SecurityModule, 
   RuntimePlan, OrderRecord, PaymentSettings, AdminActivityLog, 
   AdminStats, LogEntry 
 } from '../types';
+import { appStore } from '../store/appStore';
 import { extractErrorMessage } from '../utils/errorUtils';
 
 export interface ApiResponse<T = any> {
@@ -19,7 +26,7 @@ export class ApiError extends Error {
   data?: any;
 
   constructor(message: string, status: number = 500, errorCode: string = 'API_ERROR', data?: any) {
-    const safeMessage = extractErrorMessage(message, 'Unable to authenticate at this time');
+    const safeMessage = extractErrorMessage(message, 'An application error occurred');
     super(safeMessage);
     this.name = 'ApiError';
     this.status = status;
@@ -28,444 +35,264 @@ export class ApiError extends Error {
   }
 }
 
-// Request helper targeting the same-origin production API with HttpOnly cookie credentials
-async function apiRequest<T>(
-  endpoint: string, 
-  options: RequestInit = {}
-): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    ...(options.headers as Record<string, string> || {})
-  };
-
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      ...options,
-      headers,
-      credentials: 'include' // Transmit and receive HttpOnly session cookies automatically
-    });
-  } catch (netErr: any) {
-    throw new ApiError(
-      'Unable to connect to AEGIS Defense Gateway. Please verify your network connection.',
-      0,
-      'NETWORK_ERROR'
-    );
-  }
-
-  // Handle non-JSON or HTML error responses
-  const contentType = response.headers.get('content-type') || '';
-  let responseData: any = null;
-
-  if (contentType.includes('application/json')) {
-    try {
-      responseData = await response.json();
-    } catch {
-      responseData = null;
-    }
-  }
-
-  if (!response.ok) {
-    let defaultMsg = `Request failed with status ${response.status}`;
-    let errorCode = responseData?.error || 'HTTP_ERROR';
-
-    if (response.status === 400) {
-      defaultMsg = 'Invalid login request';
-      errorCode = 'INVALID_REQUEST';
-    } else if (response.status === 401) {
-      defaultMsg = 'Invalid admin credentials';
-      errorCode = 'INVALID_CREDENTIALS';
-    } else if (response.status === 403) {
-      defaultMsg = 'Access forbidden. Node account disabled or insufficient clearance.';
-      errorCode = 'FORBIDDEN';
-    } else if (response.status === 404) {
-      defaultMsg = 'The requested resource or endpoint was not found.';
-      errorCode = 'NOT_FOUND';
-    } else if (response.status === 405) {
-      defaultMsg = 'This endpoint only accepts POST requests';
-      errorCode = 'METHOD_NOT_ALLOWED';
-    } else if (response.status === 409) {
-      defaultMsg = 'Resource conflict detected in defense registry.';
-      errorCode = 'CONFLICT';
-    } else if (response.status === 422) {
-      defaultMsg = 'Validation error: Unprocessable entity payload.';
-      errorCode = 'UNPROCESSABLE_ENTITY';
-    } else if (response.status === 429) {
-      defaultMsg = 'Rate limit exceeded. Please back off before retrying.';
-      errorCode = 'RATE_LIMITED';
-    } else if (response.status === 500) {
-      defaultMsg = 'Authentication service is not configured correctly';
-      errorCode = 'SERVER_CONFIGURATION_ERROR';
-    } else if (response.status === 503) {
-      defaultMsg = 'Authentication service is temporarily unavailable';
-      errorCode = 'DATABASE_UNAVAILABLE';
-    } else if (response.status > 500) {
-      defaultMsg = 'Unable to authenticate at this time';
-      errorCode = 'SERVER_ERROR';
-    }
-
-    // Safely extract error message without string coercing objects
-    let finalMessage = defaultMsg;
-    if (responseData) {
-      finalMessage = extractErrorMessage(responseData, defaultMsg);
-    }
-
-    throw new ApiError(finalMessage, response.status, typeof errorCode === 'string' ? errorCode : 'HTTP_ERROR', responseData);
-  }
-
-  return (responseData !== null ? responseData : {}) as T;
-}
-
+// Frontend-only client-side API facade
 export const api = {
-  // 14. HEALTH CHECK
+  // 1. HEALTH CHECK (Client-only status)
   async getHealth(): Promise<{ success: boolean; database: string; environment: string }> {
-    return await apiRequest<{ success: boolean; database: string; environment: string }>(
-      '/api/health',
-      { method: 'GET' }
-    );
-  },
-
-  // USER AUTH
-  async loginUser(username: string, passKey: string): Promise<{ session: UserSession }> {
-    const res = await apiRequest<{ success: boolean; data?: { session: UserSession }; session?: UserSession }>(
-      '/api/auth/login', 
-      {
-        method: 'POST',
-        body: JSON.stringify({ username, password: passKey })
-      }
-    );
-
-    const session = res.data?.session || res.session;
-    if (!session) {
-      throw new ApiError('Invalid response payload received from authentication gateway', 500);
-    }
-    return { session };
-  },
-
-  async getCurrentUser(): Promise<{ session: UserSession | null }> {
-    try {
-      const res = await apiRequest<{ success: boolean; data?: { session: UserSession }; session?: UserSession }>(
-        '/api/auth/session', 
-        { method: 'GET' }
-      );
-      const session = res.data?.session || res.session || null;
-      return { session };
-    } catch {
-      return { session: null };
-    }
-  },
-
-  async logoutUser(): Promise<void> {
-    try {
-      await apiRequest('/api/auth/logout', { method: 'POST' });
-    } catch {}
-  },
-
-  // ADMIN AUTH
-  async loginAdmin(adminId: string, passKey: string): Promise<{ success: boolean; adminSession: AdminSession }> {
-    const res = await apiRequest<{ 
-      success: boolean; 
-      data?: { authenticated?: boolean; adminSession?: AdminSession }; 
-      adminSession?: AdminSession 
-    }>(
-      '/api/admin/login', 
-      {
-        method: 'POST',
-        body: JSON.stringify({ adminId, passKey })
-      }
-    );
-
-    const adminSession = res.data?.adminSession || res.adminSession || (res.success && res.data?.authenticated ? {
-      adminId: adminId.trim().toUpperCase(),
-      role: 'SUPER_ADMIN' as const,
-      token: 'AUTHENTICATED',
-      loginTime: new Date().toLocaleTimeString(),
-      isAuthenticated: true
-    } : undefined);
-
-    if (!res.success || !adminSession) {
-      throw new ApiError('Invalid admin credentials', 401, 'INVALID_CREDENTIALS');
-    }
-    return { success: true, adminSession };
-  },
-
-  async getCurrentAdmin(): Promise<{ adminSession: AdminSession | null }> {
-    try {
-      const res = await apiRequest<{ success: boolean; data?: { adminSession: AdminSession }; adminSession?: AdminSession }>(
-        '/api/admin/session', 
-        { method: 'GET' }
-      );
-      const adminSession = res.data?.adminSession || res.adminSession || null;
-      return { adminSession };
-    } catch {
-      return { adminSession: null };
-    }
-  },
-
-  async logoutAdmin(): Promise<void> {
-    try {
-      await apiRequest('/api/admin/logout', { method: 'POST' });
-    } catch {}
-  },
-
-  // MODULES & PLANS
-  async getModules(): Promise<{ modules: SecurityModule[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { modules: SecurityModule[] }; modules?: SecurityModule[] }>(
-      '/api/modules',
-      { method: 'GET' }
-    );
-    return { modules: res.data?.modules || res.modules || [] };
-  },
-
-  async getPlans(): Promise<{ plans: RuntimePlan[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { plans: RuntimePlan[] }; plans?: RuntimePlan[] }>(
-      '/api/plans',
-      { method: 'GET' }
-    );
-    return { plans: res.data?.plans || res.plans || [] };
-  },
-
-  async getSystemLogs(): Promise<{ logs: LogEntry[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { logs: LogEntry[] }; logs?: LogEntry[] }>(
-      '/api/system/logs',
-      { method: 'GET' }
-    );
-    return { logs: res.data?.logs || res.logs || [] };
-  },
-
-  // PAYMENT GATEWAY
-  async createPaymentSession(moduleId: string, planId: string, username?: string) {
-    const res = await apiRequest<{ success: boolean; data?: { session: any }; session?: any }>(
-      '/api/payments/create-session', 
-      {
-        method: 'POST',
-        body: JSON.stringify({ moduleId, planId, username })
-      }
-    );
-    return { session: res.data?.session || res.session };
-  },
-
-  async verifyPayment(sessionId: string, moduleId: string, planId: string, username: string, transactionRef: string) {
-    const res = await apiRequest<{ 
-      success: boolean; 
-      verified: boolean; 
-      data?: { order: OrderRecord; purchasedModules: string[] }; 
-      order?: OrderRecord; 
-      purchasedModules?: string[] 
-    }>(
-      '/api/payments/verify',
-      {
-        method: 'POST',
-        body: JSON.stringify({ sessionId, moduleId, planId, username, transactionRef })
-      }
-    );
-
-    const order = res.data?.order || res.order!;
-    const purchasedModules = res.data?.purchasedModules || res.purchasedModules || [];
-
     return {
-      success: res.success,
-      verified: res.verified,
-      order,
-      purchasedModules
+      success: true,
+      database: 'LOCAL_STORAGE_ENCLAVE',
+      environment: 'FRONTEND_STANDALONE'
     };
   },
 
-  // ADMIN DASHBOARD & CRUD
+  // 2. USER AUTHENTICATION
+  async loginUser(username: string, passKey: string): Promise<{ session: UserSession }> {
+    try {
+      const session = appStore.loginUser(username, passKey);
+      return { session };
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, 'Invalid credentials');
+      throw new ApiError(msg, 401, 'INVALID_CREDENTIALS');
+    }
+  },
+
+  async getCurrentUser(): Promise<{ session: UserSession | null }> {
+    const session = appStore.getCurrentUser();
+    return { session };
+  },
+
+  async logoutUser(): Promise<void> {
+    appStore.logoutUser();
+  },
+
+  // 3. ADMIN AUTHENTICATION
+  async loginAdmin(adminId: string, passKey: string): Promise<{ success: boolean; adminSession: AdminSession }> {
+    try {
+      const adminSession = appStore.loginAdmin(adminId, passKey);
+      return { success: true, adminSession };
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err, 'INVALID ADMIN CREDENTIALS');
+      throw new ApiError(msg, 401, 'INVALID_ADMIN_CREDENTIALS');
+    }
+  },
+
+  async getCurrentAdmin(): Promise<{ adminSession: AdminSession | null }> {
+    const adminSession = appStore.getCurrentAdmin();
+    return { adminSession };
+  },
+
+  async logoutAdmin(): Promise<void> {
+    appStore.logoutAdmin();
+  },
+
+  // 4. MODULES & PLANS
+  async getModules(): Promise<{ modules: SecurityModule[] }> {
+    const modules = appStore.getModules();
+    return { modules };
+  },
+
+  async getPlans(): Promise<{ plans: RuntimePlan[] }> {
+    const plans = appStore.getPlans();
+    return { plans };
+  },
+
+  async getSystemLogs(): Promise<{ logs: LogEntry[] }> {
+    const logs = appStore.getLogs();
+    return { logs };
+  },
+
+  // 5. PAYMENT GATEWAY (Frontend Sandbox Simulation)
+  async createPaymentSession(moduleId: string, planId: string, username?: string) {
+    const mod = appStore.getModules().find(m => m.id === moduleId);
+    const plan = appStore.getPlans().find(p => p.id === planId);
+    const session = {
+      sessionId: `SESS-${Date.now().toString().slice(-6)}`,
+      module: mod,
+      plan: plan,
+      amount: plan?.price || 120,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 300000,
+      status: 'PENDING' as const,
+      transactionId: `UPI-TXN-${Math.floor(Math.random() * 9000 + 1000)}-${Math.floor(Math.random() * 9000 + 1000)}`,
+      upiVpa: appStore.getPaymentSettings().upiVpa
+    };
+    return { session };
+  },
+
+  async verifyPayment(sessionId: string, moduleId: string, planId: string, username: string, transactionRef: string) {
+    const result = appStore.createOrder({
+      user: username,
+      moduleId,
+      planId,
+      transactionRef
+    });
+
+    return {
+      success: true,
+      verified: true,
+      order: result.order,
+      purchasedModules: result.purchasedModules
+    };
+  },
+
+  // 6. ADMIN DASHBOARD & CRUD
   async getAdminStats(): Promise<{ stats: AdminStats }> {
-    const res = await apiRequest<{ success: boolean; data?: { stats: AdminStats }; stats?: AdminStats }>(
-      '/api/admin/stats', 
-      { method: 'GET' }
-    );
-    return { stats: res.data?.stats || res.stats! };
+    const stats = appStore.getStats();
+    return { stats };
   },
 
   // Users CRUD
   async getAdminUsers(): Promise<{ users: UserRecord[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { users: UserRecord[] }; users?: UserRecord[] }>(
-      '/api/admin/users', 
-      { method: 'GET' }
-    );
-    return { users: res.data?.users || res.users || [] };
+    const users = appStore.getUsers();
+    return { users };
   },
 
   async createAdminUser(user: { username: string; password?: string; role?: string; status?: string }) {
-    const res = await apiRequest<{ success: boolean; data?: { user: UserRecord }; user?: UserRecord }>(
-      '/api/admin/users', 
-      {
-        method: 'POST',
-        body: JSON.stringify(user)
-      }
-    );
-    return { success: true, user: res.data?.user || res.user! };
+    try {
+      const newUser = appStore.createUser(user);
+      return { success: true, user: newUser };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to create user'), 400);
+    }
   },
 
   async updateAdminUser(id: string, updates: Partial<UserRecord>) {
-    const res = await apiRequest<{ success: boolean; data?: { user: UserRecord }; user?: UserRecord }>(
-      `/api/admin/users/${id}`, 
-      {
-        method: 'PUT',
-        body: JSON.stringify(updates)
-      }
-    );
-    return { success: true, user: res.data?.user || res.user! };
+    try {
+      const updatedUser = appStore.updateUser(id, updates);
+      return { success: true, user: updatedUser };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to update user'), 400);
+    }
   },
 
   async deleteAdminUser(id: string) {
-    const res = await apiRequest<{ success: boolean; deletedId?: string }>(
-      `/api/admin/users/${id}`, 
-      { method: 'DELETE' }
-    );
-    return { success: true, deletedId: res.deletedId || id };
+    try {
+      const deletedId = appStore.deleteUser(id);
+      return { success: true, deletedId };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to delete user'), 400);
+    }
   },
 
   async resetAdminUserPassword(id: string, newPassword?: string) {
-    const res = await apiRequest<{ success: boolean; message?: string }>(
-      `/api/admin/users/${id}/reset-password`, 
-      {
-        method: 'POST',
-        body: JSON.stringify({ newPassword })
-      }
-    );
-    return { success: true, message: res.message || 'Password reset successfully' };
+    try {
+      const message = appStore.resetUserPassword(id, newPassword);
+      return { success: true, message };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to reset password'), 400);
+    }
   },
 
   // Modules CRUD
   async createAdminModule(mod: Partial<SecurityModule>) {
-    const res = await apiRequest<{ success: boolean; data?: { module: SecurityModule }; module?: SecurityModule }>(
-      '/api/admin/modules', 
-      {
-        method: 'POST',
-        body: JSON.stringify(mod)
-      }
-    );
-    return { success: true, module: res.data?.module || res.module! };
+    try {
+      const newMod = appStore.createModule(mod);
+      return { success: true, module: newMod };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to create module'), 400);
+    }
   },
 
   async updateAdminModule(id: string, updates: Partial<SecurityModule>) {
-    const res = await apiRequest<{ success: boolean; data?: { module: SecurityModule }; module?: SecurityModule }>(
-      `/api/admin/modules/${id}`, 
-      {
-        method: 'PUT',
-        body: JSON.stringify(updates)
-      }
-    );
-    return { success: true, module: res.data?.module || res.module! };
+    try {
+      const updatedMod = appStore.updateModule(id, updates);
+      return { success: true, module: updatedMod };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to update module'), 400);
+    }
   },
 
   async deleteAdminModule(id: string) {
-    const res = await apiRequest<{ success: boolean; deletedId?: string }>(
-      `/api/admin/modules/${id}`, 
-      { method: 'DELETE' }
-    );
-    return { success: true, deletedId: res.deletedId || id };
+    try {
+      const deletedId = appStore.deleteModule(id);
+      return { success: true, deletedId };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to delete module'), 400);
+    }
   },
 
   // Plans & Pricing
   async getAdminPlans(): Promise<{ plans: RuntimePlan[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { plans: RuntimePlan[] }; plans?: RuntimePlan[] }>(
-      '/api/admin/plans', 
-      { method: 'GET' }
-    );
-    return { plans: res.data?.plans || res.plans || [] };
+    const plans = appStore.getPlans();
+    return { plans };
   },
 
   async updateAdminPlan(id: string, updates: Partial<RuntimePlan>) {
-    const res = await apiRequest<{ success: boolean; data?: { plan: RuntimePlan }; plan?: RuntimePlan }>(
-      `/api/admin/plans/${id}`, 
-      {
-        method: 'PUT',
-        body: JSON.stringify(updates)
-      }
-    );
-    return { success: true, plan: res.data?.plan || res.plan! };
+    try {
+      const updatedPlan = appStore.updatePlan(id, updates);
+      return { success: true, plan: updatedPlan };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to update plan'), 400);
+    }
   },
 
   async createAdminPlan(plan: Partial<RuntimePlan>) {
-    const res = await apiRequest<{ success: boolean; data?: { plan: RuntimePlan }; plan?: RuntimePlan }>(
-      '/api/admin/plans', 
-      {
-        method: 'POST',
-        body: JSON.stringify(plan)
-      }
-    );
-    return { success: true, plan: res.data?.plan || res.plan! };
+    try {
+      const newPlan = appStore.createPlan(plan);
+      return { success: true, plan: newPlan };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to create plan'), 400);
+    }
   },
 
   // Orders
   async getAdminOrders(): Promise<{ orders: OrderRecord[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { orders: OrderRecord[] }; orders?: OrderRecord[] }>(
-      '/api/admin/orders', 
-      { method: 'GET' }
-    );
-    return { orders: res.data?.orders || res.orders || [] };
+    const orders = appStore.getOrders();
+    return { orders };
   },
 
   async updateAdminOrderStatus(id: string, paymentStatus?: string, accessStatus?: string) {
-    const res = await apiRequest<{ success: boolean; data?: { order: OrderRecord }; order?: OrderRecord }>(
-      `/api/admin/orders/${id}/status`, 
-      {
-        method: 'PUT',
-        body: JSON.stringify({ paymentStatus, accessStatus })
-      }
-    );
-    return { success: true, order: res.data?.order || res.order! };
+    try {
+      const updatedOrder = appStore.updateOrderStatus(id, paymentStatus, accessStatus);
+      return { success: true, order: updatedOrder };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to update order status'), 400);
+    }
   },
 
   async revokeAdminOrderAccess(id: string) {
-    const res = await apiRequest<{ success: boolean; data?: { order: OrderRecord }; order?: OrderRecord }>(
-      `/api/admin/orders/${id}/revoke`, 
-      { method: 'POST' }
-    );
-    return { success: true, order: res.data?.order || res.order! };
+    try {
+      const revokedOrder = appStore.revokeOrderAccess(id);
+      return { success: true, order: revokedOrder };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to revoke order access'), 400);
+    }
   },
 
   async extendAdminOrderRuntime(id: string, additionalDays: number) {
-    const res = await apiRequest<{ success: boolean; data?: { order: OrderRecord }; order?: OrderRecord }>(
-      `/api/admin/orders/${id}/extend`, 
-      {
-        method: 'POST',
-        body: JSON.stringify({ additionalDays })
-      }
-    );
-    return { success: true, order: res.data?.order || res.order! };
+    try {
+      const extendedOrder = appStore.extendOrderRuntime(id, additionalDays);
+      return { success: true, order: extendedOrder };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to extend order runtime'), 400);
+    }
   },
 
   // Payment Settings
   async getAdminPaymentSettings(): Promise<{ settings: PaymentSettings }> {
-    const res = await apiRequest<{ success: boolean; data?: { settings: PaymentSettings }; settings?: PaymentSettings }>(
-      '/api/admin/payment-settings', 
-      { method: 'GET' }
-    );
-    return { settings: res.data?.settings || res.settings! };
+    const settings = appStore.getPaymentSettings();
+    return { settings };
   },
 
   async updateAdminPaymentSettings(settings: Partial<PaymentSettings>) {
-    const res = await apiRequest<{ success: boolean; data?: { settings: PaymentSettings }; settings?: PaymentSettings }>(
-      '/api/admin/payment-settings', 
-      {
-        method: 'PUT',
-        body: JSON.stringify(settings)
-      }
-    );
-    return { success: true, settings: res.data?.settings || res.settings! };
+    try {
+      const updated = appStore.updatePaymentSettings(settings);
+      return { success: true, settings: updated };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to update payment settings'), 400);
+    }
   },
 
   // Activity Logs
   async getAdminActivityLogs(): Promise<{ logs: AdminActivityLog[] }> {
-    const res = await apiRequest<{ success: boolean; data?: { logs: AdminActivityLog[] }; logs?: AdminActivityLog[] }>(
-      '/api/admin/activity-logs', 
-      { method: 'GET' }
-    );
-    return { logs: res.data?.logs || res.logs || [] };
+    const logs = appStore.getActivityLogs();
+    return { logs };
   },
 
-  // Reset Database
+  // Factory Reset
   async resetDatabase() {
-    return await apiRequest<{ success: boolean; message: string }>(
-      '/api/admin/reset-database', 
-      { method: 'POST' }
-    );
+    appStore.resetToDefault();
+    return { success: true, message: 'All local state reset to factory defaults' };
   }
 };
