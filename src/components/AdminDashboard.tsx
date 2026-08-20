@@ -11,6 +11,7 @@ import {
   AdminActivityLog, LogEntry, RoutePath, UserRecord, AdminStats, AdminSession 
 } from '../types';
 import { api } from '../services/api';
+import { CustomerManagementSection } from './CustomerManagementSection';
 import { playCyberClick, playCyberBlip, playSuccessSound, playAlertSound } from '../utils/audio';
 import { extractErrorMessage } from '../utils/errorUtils';
 
@@ -559,7 +560,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-800">
         {[
           { id: 'OVERVIEW', label: 'OVERVIEW', icon: Activity },
-          { id: 'USERS', label: `USERS (${users.length})`, icon: Users },
+          { id: 'USERS', label: `CUSTOMER MANAGEMENT (${users.length})`, icon: Users },
           { id: 'MODULES', label: `MODULES (${modules.length})`, icon: Cpu },
           { id: 'PRICING', label: `PRICING (${plans.length})`, icon: DollarSign },
           { id: 'ORDERS', label: `ORDERS (${orders.length})`, icon: ShoppingCart },
@@ -606,13 +607,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   onClick={() => {
                     playCyberClick();
-                    setShowCreateUserModal(true);
+                    setActiveTab('USERS');
                   }}
                   className="w-full p-2.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 font-mono-tech text-xs font-semibold flex items-center justify-between transition-all"
                 >
                   <span className="flex items-center gap-2">
-                    <Plus className="w-3.5 h-3.5 text-cyan-400" />
-                    CREATE NEW USER NODE
+                    <Users className="w-3.5 h-3.5 text-cyan-400" />
+                    MANAGE CUSTOMERS & PRICING
                   </span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -678,7 +679,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-800">
                   <span className="text-slate-400">Database Engine:</span>
-                  <span className="text-white font-bold">PERSISTENT JSON STORAGE</span>
+                  <span className="text-white font-bold">LOCAL PERSISTENT ENCLAVE</span>
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-slate-400">Security Cipher:</span>
@@ -724,132 +725,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* ==================================================== */}
-      {/* TAB 2: USERS MANAGEMENT */}
+      {/* TAB 2: CUSTOMER MANAGEMENT SYSTEM */}
       {/* ==================================================== */}
       {activeTab === 'USERS' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                id="input-search-users"
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search users by ID, username, or role..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#060c1d] border border-cyan-500/30 text-white font-mono-tech text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-
-            <button
-              id="btn-create-user-modal"
-              onClick={() => {
-                playCyberClick();
-                setShowCreateUserModal(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-cyber font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>CREATE NEW USER</span>
-            </button>
-          </div>
-
-          {/* Users Table */}
-          <div className="rounded-2xl bg-[#081024]/90 border border-cyan-500/30 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left font-mono-tech text-xs">
-                <thead className="bg-[#040816] text-cyan-400 uppercase text-[10px] tracking-wider border-b border-cyan-500/20">
-                  <tr>
-                    <th className="p-3.5">User / Node ID</th>
-                    <th className="p-3.5">Role</th>
-                    <th className="p-3.5">Status</th>
-                    <th className="p-3.5">Purchased Modules</th>
-                    <th className="p-3.5">Registration Date</th>
-                    <th className="p-3.5">Last Login</th>
-                    <th className="p-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-cyan-950/20 transition-colors">
-                      <td className="p-3.5">
-                        <div className="font-bold text-white flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-cyan-400" />
-                          {u.username}
-                        </div>
-                        <span className="text-[10px] text-slate-500">{u.id}</span>
-                      </td>
-                      <td className="p-3.5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          u.role === 'SECURITY_OFFICER' 
-                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' 
-                            : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                        }`}>
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="p-3.5">
-                        <button
-                          onClick={() => handleToggleUserStatus(u)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 transition-all ${
-                            u.status === 'ACTIVE'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                          }`}
-                        >
-                          {u.status === 'ACTIVE' ? <Check className="w-3 h-3" /> : <Ban className="w-3 h-3" />}
-                          <span>{u.status}</span>
-                        </button>
-                      </td>
-                      <td className="p-3.5">
-                        <span className="text-white font-bold">{u.purchasedModules?.length || 0}</span>
-                        <span className="text-slate-500 text-[10px]"> active modules</span>
-                      </td>
-                      <td className="p-3.5 text-[11px] text-slate-400">{u.createdAt}</td>
-                      <td className="p-3.5 text-[11px] text-slate-400">{u.lastLogin}</td>
-                      <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => {
-                              playCyberClick();
-                              setEditUser({ ...u });
-                            }}
-                            title="Edit User"
-                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950 border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-all"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              playCyberClick();
-                              setResetPassUser(u);
-                              setResetPassValue('');
-                            }}
-                            title="Reset Password"
-                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-amber-950 border border-slate-700 hover:border-amber-400 text-amber-300 transition-all"
-                          >
-                            <Key className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              playCyberClick();
-                              setConfirmDeleteUser(u);
-                            }}
-                            title="Delete User"
-                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-rose-950 border border-slate-700 hover:border-rose-400 text-rose-400 transition-all"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <CustomerManagementSection
+          users={users}
+          modules={modules}
+          plans={plans}
+          stats={stats}
+          onRefresh={() => {
+            fetchAllData();
+            if (onRefreshData) onRefreshData();
+          }}
+          onShowToast={onShowToast}
+        />
       )}
 
       {/* ==================================================== */}

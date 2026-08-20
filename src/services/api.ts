@@ -142,27 +142,62 @@ export const api = {
     return { stats };
   },
 
-  // Users CRUD
+  // Users / Customers CRUD
   async getAdminUsers(): Promise<{ users: UserRecord[] }> {
     const users = appStore.getUsers();
     return { users };
   },
 
-  async createAdminUser(user: { username: string; password?: string; role?: string; status?: string }) {
+  async createAdminUser(user: {
+    customerName?: string;
+    customerId?: string;
+    username: string;
+    password: string;
+    confirmPassword?: string;
+    role?: 'AGENT' | 'SECURITY_OFFICER';
+    status?: 'ACTIVE' | 'BLOCKED';
+    assignedModules?: string[];
+    useDefaultPrice?: boolean;
+    customPrice?: number;
+    runtime?: string;
+    startDate?: string;
+    expiryDate?: string;
+  }) {
     try {
-      const newUser = appStore.createUser(user);
+      const newUser = appStore.createUser({
+        ...user,
+        customerId: user.customerId || `CUST-${Math.floor(1000 + Math.random() * 9000)}`
+      });
       return { success: true, user: newUser };
     } catch (err: unknown) {
-      throw new ApiError(extractErrorMessage(err, 'Failed to create user'), 400);
+      throw new ApiError(extractErrorMessage(err, 'Failed to create customer'), 400);
     }
   },
 
-  async updateAdminUser(id: string, updates: Partial<UserRecord>) {
+  async updateAdminUser(id: string, updates: Partial<UserRecord> & { password?: string }) {
     try {
       const updatedUser = appStore.updateUser(id, updates);
       return { success: true, user: updatedUser };
     } catch (err: unknown) {
-      throw new ApiError(extractErrorMessage(err, 'Failed to update user'), 400);
+      throw new ApiError(extractErrorMessage(err, 'Failed to update customer'), 400);
+    }
+  },
+
+  async blockAdminUser(id: string) {
+    try {
+      const user = appStore.blockUser(id);
+      return { success: true, user };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to block customer'), 400);
+    }
+  },
+
+  async unblockAdminUser(id: string) {
+    try {
+      const user = appStore.unblockUser(id);
+      return { success: true, user };
+    } catch (err: unknown) {
+      throw new ApiError(extractErrorMessage(err, 'Failed to unblock customer'), 400);
     }
   },
 
@@ -171,7 +206,7 @@ export const api = {
       const deletedId = appStore.deleteUser(id);
       return { success: true, deletedId };
     } catch (err: unknown) {
-      throw new ApiError(extractErrorMessage(err, 'Failed to delete user'), 400);
+      throw new ApiError(extractErrorMessage(err, 'Failed to delete customer'), 400);
     }
   },
 

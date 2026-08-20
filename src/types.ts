@@ -12,12 +12,20 @@ export type RoutePath =
 
 export interface UserSession {
   authorizedId: string;
+  customerId?: string;
+  customerName?: string;
   role: 'AGENT' | 'SUPER_ADMIN' | 'SECURITY_OFFICER';
   token: string;
   loginTime: string;
   ipHash: string;
   isAuthenticated: boolean;
   purchasedModules?: string[];
+  assignedModules?: string[];
+  useDefaultPrice?: boolean;
+  customPrice?: number;
+  runtime?: string;
+  startDate?: string;
+  expiryDate?: string;
   activeRuntimes?: Record<string, { planTitle: string; expiresAt: string; activatedAt: string }>;
 }
 
@@ -31,9 +39,18 @@ export interface AdminSession {
 
 export interface UserRecord {
   id: string;
+  customerId?: string;
+  customerName?: string;
   username: string;
+  password?: string;
   role: 'AGENT' | 'SECURITY_OFFICER';
-  status: 'ACTIVE' | 'DISABLED';
+  status: 'ACTIVE' | 'BLOCKED' | 'EXPIRED' | 'DISABLED';
+  assignedModules?: string[];
+  useDefaultPrice?: boolean;
+  customPrice?: number;
+  runtime?: string;
+  startDate?: string;
+  expiryDate?: string;
   createdAt: string;
   lastLogin: string;
   ipHash: string;
@@ -123,6 +140,9 @@ export interface AdminActivityLog {
 export interface AdminStats {
   totalUsers: number;
   activeUsers: number;
+  blockedUsers?: number;
+  activeAccess?: number;
+  expiredAccess?: number;
   activeModules: number;
   totalOrders: number;
   paidOrders: number;
